@@ -1,0 +1,5 @@
+Knowledge-OS/README.md
+Knowledge-OS/Rules/**
+Knowledge-OS/Schema/**
+Knowledge-OS/Tools/*.mjs
+Knowledge-OS/os-manifest

@@ -1,0 +1,11 @@
+{
+  "alwaysUpdateLinks": true,
+  "userIgnoreFilters": [
+    "node_modules/",
+    "Knowledge-OS/Tools/__fixtures__/",
+    "Knowledge-OS/Tools/__provider_fixtures__/",
+    "Knowledge-OS/Dist/",
+    "Plans/",
+    "Project-OS/Templates/"
+  ]
+}

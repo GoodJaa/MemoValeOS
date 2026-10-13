@@ -1,0 +1,42 @@
+views:
+  - type: table
+    name: Open tasks
+    filters:
+      and:
+        - note.type == "task"
+        - file.folder == "Project-OS/03-Development/Tasks"
+        - note.status != "done"
+        - note.status != "cancelled"
+    order:
+      - file.name
+      - status
+      - priority
+  - type: table
+    name: Blocked
+    filters:
+      and:
+        - note.type == "task"
+        - file.folder == "Project-OS/03-Development/Tasks"
+        - note.status == "blocked"
+    order:
+      - file.name
+      - priority
+  - type: table
+    name: Epics
+    filters:
+      and:
+        - note.type == "epic"
+        - file.folder == "Project-OS/03-Development/Epics"
+    order:
+      - file.name
+      - status
+  - type: table
+    name: Done
+    filters:
+      and:
+        - note.type == "task"
+        - file.folder == "Project-OS/03-Development/Tasks"
+        - note.status == "done"
+    order:
+      - file.name
+      - updated

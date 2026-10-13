@@ -1,0 +1,66 @@
+Knowledge-OS/Rules/**
+Knowledge-OS/Schema/**
+Knowledge-OS/Protocols/**
+Knowledge-OS/Tools/*.mjs
+Knowledge-OS/Tools/__fixtures__/**
+Knowledge-OS/Tools/__provider_fixtures__/**
+Knowledge-OS/Dist/**
+Knowledge-OS/os-manifest
+Knowledge-OS/Context-Index.md
+Knowledge-OS/README.md
+Knowledge-OS/Knowledge-DB.base
+.gitattributes
+.gitignore
+package.json
+package-lock.json
+QA.md
+CHANGELOG.md
+Project-OS/Templates/*.md
+!Project-OS/Templates/Task.md
+
+# AI.md is OS layer rather than project state: it is the Session Closing
+# Ritual, the canon /mv-close is required to read instead of restating. Its
+# neighbour Current Context records this project's situation and does not
+# travel.
+#
+# Findings.md is deliberately NOT listed, though it is equally structural. An
+# index carries entries, and entries are instances: shipping this project's
+# would give upstream twenty-one broken links to Findings it does not have.
+# Its shape belongs in Templates/ if it is ever to travel. Noticed when a
+# delivery carried it and upstream's validator rejected the result.
+Project-OS/06-AI/AI.md
+
+# Docs/ is the developer documentation of the OS itself: how every part works
+# and why. It describes the layer, not this project, so it travels with it. Its
+# pages may link only to paths this manifest covers (or to Docs/ itself) —
+# upstream has none of this project's Tasks or Findings.
+Docs/**
+
+# `.claude/` is deliberately absent from this list, and cannot be in it.
+# Every path here is relative to the vault, and the project-root `.claude/` is
+# outside the vault by construction — so the two lines that used to sit here
+# (`.claude/commands/**`, `.claude/hooks/**`) declared a delivery the transport
+# could never perform. Upstream had no `.claude/` at all for weeks, and nothing
+# reported it, because a manifest line for a file that does not exist under the
+# vault matches nothing.
+#
+# The sources now live in `Knowledge-OS/Dist/` and travel from there.
+# `Knowledge-OS/Tools/adopt.mjs` materializes them into whatever project root
+# the OS is installed into, and `deployed-command-drift` fails the validator
+# if the deployed copy and its source ever disagree.
+
+# Per-copy files: part of the system, but every copy keeps its own, so they
+# are deliberately absent too. A manifest line is a promise that
+# `upgrade.mjs` may overwrite the path in any project the OS is installed
+# into, and these would overwrite that project's README, its Obsidian
+# settings, its own OS backlog:
+#
+#   CLAUDE.md  README.md  .os-version
+#   .obsidian/app.json  .obsidian/templates.json
+#   Backlog.md
+#
+# Toward upstream they are carried by hand, as a step of /mv-sync. Before
+# that step existed, the `Docs/` line added to CLAUDE.md here never reached
+# upstream, and nothing reported it. Backlog-Archive.md is not among them: it
+# is this project's record of how OS entries were closed, and stays here.
+# PER_COPY_FILES in Tools/manifest.mjs is this list in a form code reads.

@@ -1,0 +1,34 @@
+# Obsidian — per-machine UI state
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/graph.json
+.obsidian/appearance.json
+
+# Kept on purpose: app.json, core-plugins.json and community-plugins.json
+# record which plugins Obsidian needs if this vault is opened there (bases for
+# the .base views, properties for frontmatter) and alwaysUpdateLinks, which
+# keeps links intact. None of this is required outside Obsidian — the system
+# works from a plain git clone (plus `npm install` for validate-vault.mjs's
+# frontmatter parser) via validate-vault.mjs and the .claude/commands.
+
+# Obsidian — installable plugins (reinstall from the community store)
+.obsidian/plugins/
+
+# Obsidian trash
+.trash/
+
+# MCP connector bundle (installable artifact, not vault content)
+obsidian-mcp-connector.mcpb
+
+# Per-session metric dumps written by context-metrics.mjs --write. The snapshot
+# row in Metrics/Context Metrics.md is the record; these are the raw material
+# behind one row, per machine, and are not knowledge.
+Metrics/sessions/
+
+# Node dependencies (reinstall with `npm install`)
+node_modules/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

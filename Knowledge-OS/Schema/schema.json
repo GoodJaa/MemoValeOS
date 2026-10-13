@@ -1,0 +1,159 @@
+{
+  "metadataKeys": [
+    "type",
+    "lifecycle",
+    "status",
+    "priority",
+    "evidence",
+    "created",
+    "updated",
+    "stale",
+    "source"
+  ],
+  "coreTypes": [
+    "product",
+    "architecture",
+    "epic",
+    "task",
+    "research",
+    "decision",
+    "idea"
+  ],
+  "operationalTypes": [
+    "prompt",
+    "log",
+    "resource",
+    "finding"
+  ],
+  "metaTypes": [
+    "readme",
+    "index",
+    "schema",
+    "rule",
+    "protocol"
+  ],
+  "lifecycles": [
+    "draft",
+    "active",
+    "superseded",
+    "archived"
+  ],
+  "statusByType": {
+    "task": [
+      "todo",
+      "in-progress",
+      "blocked",
+      "review",
+      "done",
+      "cancelled"
+    ],
+    "epic": [
+      "planned",
+      "active",
+      "blocked",
+      "done",
+      "cancelled"
+    ],
+    "research": [
+      "open",
+      "completed",
+      "obsolete"
+    ],
+    "decision": [
+      "proposed",
+      "accepted",
+      "superseded",
+      "rejected"
+    ],
+    "idea": [
+      "inbox",
+      "research",
+      "planned",
+      "implemented",
+      "rejected",
+      "archived"
+    ],
+    "log": [
+      "active"
+    ],
+    "index": [
+      "active"
+    ],
+    "finding": [
+      "active"
+    ],
+    "prompt": [
+      "active"
+    ],
+    "resource": [
+      "active"
+    ],
+    "readme": [
+      "active"
+    ],
+    "schema": [
+      "active"
+    ],
+    "rule": [
+      "active"
+    ],
+    "protocol": [
+      "active"
+    ]
+  },
+  "activeLifecycleStatuses": {
+    "task": [
+      "done"
+    ],
+    "epic": [
+      "active",
+      "done"
+    ],
+    "decision": [
+      "accepted"
+    ]
+  },
+  "priorities": [
+    "high",
+    "medium",
+    "low"
+  ],
+  "relationshipTypes": [
+    "contains",
+    "depends-on",
+    "implements",
+    "constrained-by",
+    "supports",
+    "affects",
+    "based-on",
+    "supersedes",
+    "related-to"
+  ],
+  "evidenceLevels": [
+    "L1",
+    "L2",
+    "L3",
+    "L4"
+  ],
+  "evidenceActionMap": {
+    "read": "L1",
+    "ran": "L2",
+    "used": "L3",
+    "confirmed": "L4"
+  },
+  "evidenceFloorByType": {
+    "research": "L1",
+    "architecture": "L2",
+    "decision": "L2",
+    "product": "L4",
+    "task": "L2"
+  },
+  "evidenceAlternativeByType": {
+    "product": [
+      "user-provided"
+    ],
+    "resource": [
+      "user-provided"
+    ]
+  }
+}

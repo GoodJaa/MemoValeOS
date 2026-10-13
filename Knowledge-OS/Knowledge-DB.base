@@ -1,0 +1,51 @@
+views:
+  - type: table
+    name: Active
+    filters:
+      and:
+        - note.lifecycle == "active"
+    order:
+      - file.name
+      - type
+      - status
+  - type: table
+    name: Draft
+    filters:
+      and:
+        - note.lifecycle == "draft"
+    order:
+      - file.name
+      - type
+      - status
+  - type: table
+    name: Superseded
+    filters:
+      and:
+        - note.lifecycle == "superseded"
+    order:
+      - file.name
+      - type
+      - status
+  - type: table
+    name: Archived
+    filters:
+      and:
+        - note.lifecycle == "archived"
+    order:
+      - file.name
+      - type
+  - type: table
+    name: Schema violations
+    filters:
+      or:
+        - note.type == null
+        - note.lifecycle == null
+        - and:
+            - note.status == null
+            - note.type != "product"
+            - note.type != "architecture"
+    order:
+      - file.name
+      - type
+      - lifecycle
+      - status

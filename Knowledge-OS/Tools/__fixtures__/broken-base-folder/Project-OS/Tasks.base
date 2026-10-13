@@ -1,0 +1,8 @@
+views:
+  - type: table
+    name: Open tasks
+    filters:
+      and:
+        - note.type == "task"
+        - file.folder == "Project-OS/Nonexistent-Tasks-Folder"
+        - note.status != "done"

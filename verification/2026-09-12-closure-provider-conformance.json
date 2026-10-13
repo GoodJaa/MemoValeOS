@@ -1,0 +1,759 @@
+{
+  "checks": [
+    {
+      "detail": "fixture vault remains inside the disposable project",
+      "name": "fixture-containment",
+      "status": "passed"
+    },
+    {
+      "detail": "provider and core protocol versions are explicit",
+      "name": "protocol-semver",
+      "status": "passed"
+    },
+    {
+      "detail": "advertised operations and write boundary match the conformance profile",
+      "name": "capability-truthfulness",
+      "status": "passed"
+    },
+    {
+      "detail": "health succeeds without an Obsidian dependency",
+      "name": "filesystem-health",
+      "status": "passed"
+    },
+    {
+      "detail": "bounded fixture context prepared without omissions",
+      "name": "prepare-status",
+      "status": "passed"
+    },
+    {
+      "detail": "receipt identity and budget accounting are internally consistent",
+      "name": "prepare-contract",
+      "status": "passed"
+    },
+    {
+      "detail": "every reference is contained and matches Git revision plus SHA-256",
+      "name": "reference-provenance",
+      "status": "passed"
+    },
+    {
+      "detail": "stable inputs select identical reference identities and digests",
+      "name": "deterministic-selection",
+      "status": "passed"
+    },
+    {
+      "detail": "budget truncation is explicit and cannot report ok",
+      "name": "degraded-budget",
+      "status": "passed"
+    },
+    {
+      "detail": "vault traversal fails closed",
+      "name": "path-negative-control",
+      "status": "passed"
+    },
+    {
+      "detail": "checkpoint contains identities and digests but no note bodies",
+      "name": "checkpoint-reference-only",
+      "status": "passed"
+    },
+    {
+      "detail": "unchanged checkpoint sources restore idempotently",
+      "name": "checkpoint-restore",
+      "status": "passed"
+    },
+    {
+      "detail": "Decision candidate remains an unwritten human-reviewed draft proposal",
+      "name": "proposal-only",
+      "status": "passed"
+    },
+    {
+      "detail": "managed_write fails closed without mutating the fixture",
+      "name": "managed-write-negative",
+      "status": "passed"
+    },
+    {
+      "detail": "restore detects changed source content",
+      "name": "restore-negative-control",
+      "status": "passed"
+    }
+  ],
+  "protocol_version": "1.0",
+  "provider_id": "memovale",
+  "responses": [
+    {
+      "operation": "capabilities",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "capabilities": {
+            "checkpoint_storage": "reference-digest-only",
+            "context_selection": "explicit-entrypoints",
+            "durable": true,
+            "managed_write": false,
+            "obsidian_required": false,
+            "operations": [
+              "capabilities",
+              "health",
+              "prepare_context",
+              "checkpoint",
+              "restore",
+              "propose_knowledge"
+            ],
+            "write_modes": [
+              "read_only",
+              "propose"
+            ]
+          }
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-capabilities",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "health",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "healthy": true,
+          "obsidian_required": false,
+          "vault_root": "MemoValeOS"
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-health",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "prepare_context",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "plan": {
+            "id": "context-plan-conformance",
+            "max_bytes": 32768,
+            "max_files": 3,
+            "protocol_version": "1.0",
+            "provider_ids": [
+              "memovale"
+            ],
+            "stage": "context_discovery",
+            "stop_condition": "the governing decision is known",
+            "target_facts": [
+              "applicable decisions"
+            ],
+            "task_id": "conformance-task"
+          },
+          "receipt": {
+            "adapter_extensions": {
+              "authority": "project-knowledge",
+              "contradictions": [],
+              "draft_sources": [],
+              "lifecycle_omissions": [],
+              "mandatory_entrypoints": [
+                "CLAUDE.md",
+                "Knowledge OS/Protocols/Context Selection Protocol.md"
+              ],
+              "requested_entrypoints": [
+                "Project OS/05 Decisions/Decisions.md"
+              ],
+              "selected_bytes": 325,
+              "selected_files": 3,
+              "sources": [
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "",
+                  "path": "CLAUDE.md",
+                  "reference_id": "memovale-c3e663ff7f69ef3c0bb3",
+                  "stale": false,
+                  "status": "",
+                  "title": "CLAUDE.md",
+                  "type": "",
+                  "updated": ""
+                },
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "active",
+                  "path": "Knowledge OS/Protocols/Context Selection Protocol.md",
+                  "reference_id": "memovale-639a465e7b7e5e061ec1",
+                  "stale": false,
+                  "status": "active",
+                  "title": "Context Selection Protocol",
+                  "type": "protocol",
+                  "updated": ""
+                },
+                {
+                  "created": "",
+                  "evidence": "L2",
+                  "frontmatter_valid": true,
+                  "lifecycle": "active",
+                  "path": "Project OS/05 Decisions/Decisions.md",
+                  "reference_id": "memovale-cc45de5c3a1b8e8b97ba",
+                  "stale": false,
+                  "status": "accepted",
+                  "title": "Decisions",
+                  "type": "decision",
+                  "updated": ""
+                }
+              ],
+              "stale_sources": [],
+              "stop_condition": "the governing decision is known",
+              "target_facts": [
+                "applicable decisions"
+              ]
+            },
+            "cache_telemetry": null,
+            "facts": [],
+            "id": "receipt-request-prepare_context",
+            "omissions": [],
+            "plan_id": "context-plan-conformance",
+            "protocol_version": "1.0",
+            "provider_id": "memovale",
+            "provider_version": "0.1.0",
+            "reference_ids": [
+              "memovale-c3e663ff7f69ef3c0bb3",
+              "memovale-639a465e7b7e5e061ec1",
+              "memovale-cc45de5c3a1b8e8b97ba"
+            ],
+            "retrieved_at": "2026-09-12T20:12:39.479Z",
+            "status": "ok",
+            "transport": "process",
+            "truncated": false,
+            "warnings": []
+          },
+          "references": [
+            {
+              "digest": "sha256:7709a0008996487ac50f312184f63acf5004ac9780a618590e2c47d102c7538a",
+              "environment_id": "memovale-vault",
+              "id": "memovale-c3e663ff7f69ef3c0bb3",
+              "kind": "memovale_note",
+              "native_id": "CLAUDE.md",
+              "observed_at": "2026-09-12T20:12:39.479Z",
+              "path": "MemoValeOS/CLAUDE.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            },
+            {
+              "digest": "sha256:355827ecbb99351e29a593d9d7e8910abb04f54c80134a8ebf4256b5a977d220",
+              "environment_id": "memovale-vault",
+              "id": "memovale-639a465e7b7e5e061ec1",
+              "kind": "memovale_note",
+              "native_id": "Knowledge OS/Protocols/Context Selection Protocol.md",
+              "observed_at": "2026-09-12T20:12:39.479Z",
+              "path": "MemoValeOS/Knowledge OS/Protocols/Context Selection Protocol.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            },
+            {
+              "digest": "sha256:4420a3f09fddb821319e96bdbd82e8531ab339b634caf1e0f99a687b3e680f6b",
+              "environment_id": "memovale-vault",
+              "id": "memovale-cc45de5c3a1b8e8b97ba",
+              "kind": "memovale_note",
+              "native_id": "Project OS/05 Decisions/Decisions.md",
+              "observed_at": "2026-09-12T20:12:39.479Z",
+              "path": "MemoValeOS/Project OS/05 Decisions/Decisions.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            }
+          ]
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-prepare_context",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "prepare_context",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "plan": {
+            "id": "context-plan-conformance",
+            "max_bytes": 32768,
+            "max_files": 3,
+            "protocol_version": "1.0",
+            "provider_ids": [
+              "memovale"
+            ],
+            "stage": "context_discovery",
+            "stop_condition": "the governing decision is known",
+            "target_facts": [
+              "applicable decisions"
+            ],
+            "task_id": "conformance-task"
+          },
+          "receipt": {
+            "adapter_extensions": {
+              "authority": "project-knowledge",
+              "contradictions": [],
+              "draft_sources": [],
+              "lifecycle_omissions": [],
+              "mandatory_entrypoints": [
+                "CLAUDE.md",
+                "Knowledge OS/Protocols/Context Selection Protocol.md"
+              ],
+              "requested_entrypoints": [
+                "Project OS/05 Decisions/Decisions.md"
+              ],
+              "selected_bytes": 325,
+              "selected_files": 3,
+              "sources": [
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "",
+                  "path": "CLAUDE.md",
+                  "reference_id": "memovale-c3e663ff7f69ef3c0bb3",
+                  "stale": false,
+                  "status": "",
+                  "title": "CLAUDE.md",
+                  "type": "",
+                  "updated": ""
+                },
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "active",
+                  "path": "Knowledge OS/Protocols/Context Selection Protocol.md",
+                  "reference_id": "memovale-639a465e7b7e5e061ec1",
+                  "stale": false,
+                  "status": "active",
+                  "title": "Context Selection Protocol",
+                  "type": "protocol",
+                  "updated": ""
+                },
+                {
+                  "created": "",
+                  "evidence": "L2",
+                  "frontmatter_valid": true,
+                  "lifecycle": "active",
+                  "path": "Project OS/05 Decisions/Decisions.md",
+                  "reference_id": "memovale-cc45de5c3a1b8e8b97ba",
+                  "stale": false,
+                  "status": "accepted",
+                  "title": "Decisions",
+                  "type": "decision",
+                  "updated": ""
+                }
+              ],
+              "stale_sources": [],
+              "stop_condition": "the governing decision is known",
+              "target_facts": [
+                "applicable decisions"
+              ]
+            },
+            "cache_telemetry": null,
+            "facts": [],
+            "id": "receipt-request-prepare-context-repeat",
+            "omissions": [],
+            "plan_id": "context-plan-conformance",
+            "protocol_version": "1.0",
+            "provider_id": "memovale",
+            "provider_version": "0.1.0",
+            "reference_ids": [
+              "memovale-c3e663ff7f69ef3c0bb3",
+              "memovale-639a465e7b7e5e061ec1",
+              "memovale-cc45de5c3a1b8e8b97ba"
+            ],
+            "retrieved_at": "2026-09-12T20:12:39.581Z",
+            "status": "ok",
+            "transport": "process",
+            "truncated": false,
+            "warnings": []
+          },
+          "references": [
+            {
+              "digest": "sha256:7709a0008996487ac50f312184f63acf5004ac9780a618590e2c47d102c7538a",
+              "environment_id": "memovale-vault",
+              "id": "memovale-c3e663ff7f69ef3c0bb3",
+              "kind": "memovale_note",
+              "native_id": "CLAUDE.md",
+              "observed_at": "2026-09-12T20:12:39.581Z",
+              "path": "MemoValeOS/CLAUDE.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            },
+            {
+              "digest": "sha256:355827ecbb99351e29a593d9d7e8910abb04f54c80134a8ebf4256b5a977d220",
+              "environment_id": "memovale-vault",
+              "id": "memovale-639a465e7b7e5e061ec1",
+              "kind": "memovale_note",
+              "native_id": "Knowledge OS/Protocols/Context Selection Protocol.md",
+              "observed_at": "2026-09-12T20:12:39.581Z",
+              "path": "MemoValeOS/Knowledge OS/Protocols/Context Selection Protocol.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            },
+            {
+              "digest": "sha256:4420a3f09fddb821319e96bdbd82e8531ab339b634caf1e0f99a687b3e680f6b",
+              "environment_id": "memovale-vault",
+              "id": "memovale-cc45de5c3a1b8e8b97ba",
+              "kind": "memovale_note",
+              "native_id": "Project OS/05 Decisions/Decisions.md",
+              "observed_at": "2026-09-12T20:12:39.581Z",
+              "path": "MemoValeOS/Project OS/05 Decisions/Decisions.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            }
+          ]
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-prepare-context-repeat",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "prepare_context",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "plan": {
+            "id": "context-plan-conformance",
+            "max_bytes": 32768,
+            "max_files": 2,
+            "protocol_version": "1.0",
+            "provider_ids": [
+              "memovale"
+            ],
+            "stage": "context_discovery",
+            "stop_condition": "the governing decision is known",
+            "target_facts": [
+              "applicable decisions"
+            ],
+            "task_id": "conformance-task"
+          },
+          "receipt": {
+            "adapter_extensions": {
+              "authority": "project-knowledge",
+              "contradictions": [],
+              "draft_sources": [],
+              "lifecycle_omissions": [],
+              "mandatory_entrypoints": [
+                "CLAUDE.md",
+                "Knowledge OS/Protocols/Context Selection Protocol.md"
+              ],
+              "requested_entrypoints": [
+                "Project OS/05 Decisions/Decisions.md"
+              ],
+              "selected_bytes": 203,
+              "selected_files": 2,
+              "sources": [
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "",
+                  "path": "CLAUDE.md",
+                  "reference_id": "memovale-c3e663ff7f69ef3c0bb3",
+                  "stale": false,
+                  "status": "",
+                  "title": "CLAUDE.md",
+                  "type": "",
+                  "updated": ""
+                },
+                {
+                  "created": "",
+                  "evidence": "",
+                  "frontmatter_valid": true,
+                  "lifecycle": "active",
+                  "path": "Knowledge OS/Protocols/Context Selection Protocol.md",
+                  "reference_id": "memovale-639a465e7b7e5e061ec1",
+                  "stale": false,
+                  "status": "active",
+                  "title": "Context Selection Protocol",
+                  "type": "protocol",
+                  "updated": ""
+                }
+              ],
+              "stale_sources": [],
+              "stop_condition": "the governing decision is known",
+              "target_facts": [
+                "applicable decisions"
+              ]
+            },
+            "cache_telemetry": null,
+            "facts": [],
+            "id": "receipt-request-prepare-context-degraded",
+            "omissions": [
+              "Project OS/05 Decisions/Decisions.md: file budget"
+            ],
+            "plan_id": "context-plan-conformance",
+            "protocol_version": "1.0",
+            "provider_id": "memovale",
+            "provider_version": "0.1.0",
+            "reference_ids": [
+              "memovale-c3e663ff7f69ef3c0bb3",
+              "memovale-639a465e7b7e5e061ec1"
+            ],
+            "retrieved_at": "2026-09-12T20:12:39.685Z",
+            "status": "degraded",
+            "transport": "process",
+            "truncated": true,
+            "warnings": [
+              "Context selection was truncated by the declared budget."
+            ]
+          },
+          "references": [
+            {
+              "digest": "sha256:7709a0008996487ac50f312184f63acf5004ac9780a618590e2c47d102c7538a",
+              "environment_id": "memovale-vault",
+              "id": "memovale-c3e663ff7f69ef3c0bb3",
+              "kind": "memovale_note",
+              "native_id": "CLAUDE.md",
+              "observed_at": "2026-09-12T20:12:39.685Z",
+              "path": "MemoValeOS/CLAUDE.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            },
+            {
+              "digest": "sha256:355827ecbb99351e29a593d9d7e8910abb04f54c80134a8ebf4256b5a977d220",
+              "environment_id": "memovale-vault",
+              "id": "memovale-639a465e7b7e5e061ec1",
+              "kind": "memovale_note",
+              "native_id": "Knowledge OS/Protocols/Context Selection Protocol.md",
+              "observed_at": "2026-09-12T20:12:39.685Z",
+              "path": "MemoValeOS/Knowledge OS/Protocols/Context Selection Protocol.md",
+              "protocol_version": "1.0",
+              "revision": "2007534715c8882cb4240a487905f05337fccc75",
+              "uri": ""
+            }
+          ]
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-prepare-context-degraded",
+        "status": "degraded",
+        "warnings": [
+          "Context selection was truncated by the declared budget."
+        ]
+      }
+    },
+    {
+      "operation": "prepare_context",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [
+          {
+            "code": "invalid-entrypoint",
+            "message": "Entrypoint escapes or is not normalized: ../outside.md",
+            "protocol_version": "1.0",
+            "retryable": false
+          }
+        ],
+        "message_type": "response",
+        "payload": {},
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-prepare-context-escape",
+        "status": "error",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "checkpoint",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "checkpoint": {
+            "created_at": "2026-09-12T20:12:39.891Z",
+            "cycle_id": "cycle-conformance",
+            "envelope_id": "envelope-conformance",
+            "id": "memovale-checkpoint-e84219b09a71c025dbc8",
+            "protocol_version": "1.0",
+            "reference_ids": [
+              "memovale-c3e663ff7f69ef3c0bb3",
+              "memovale-639a465e7b7e5e061ec1",
+              "memovale-cc45de5c3a1b8e8b97ba"
+            ],
+            "references": [
+              {
+                "digest": "sha256:7709a0008996487ac50f312184f63acf5004ac9780a618590e2c47d102c7538a",
+                "id": "memovale-c3e663ff7f69ef3c0bb3",
+                "kind": "memovale_note",
+                "native_id": "CLAUDE.md",
+                "path": "MemoValeOS/CLAUDE.md",
+                "revision": "2007534715c8882cb4240a487905f05337fccc75"
+              },
+              {
+                "digest": "sha256:355827ecbb99351e29a593d9d7e8910abb04f54c80134a8ebf4256b5a977d220",
+                "id": "memovale-639a465e7b7e5e061ec1",
+                "kind": "memovale_note",
+                "native_id": "Knowledge OS/Protocols/Context Selection Protocol.md",
+                "path": "MemoValeOS/Knowledge OS/Protocols/Context Selection Protocol.md",
+                "revision": "2007534715c8882cb4240a487905f05337fccc75"
+              },
+              {
+                "digest": "sha256:4420a3f09fddb821319e96bdbd82e8531ab339b634caf1e0f99a687b3e680f6b",
+                "id": "memovale-cc45de5c3a1b8e8b97ba",
+                "kind": "memovale_note",
+                "native_id": "Project OS/05 Decisions/Decisions.md",
+                "path": "MemoValeOS/Project OS/05 Decisions/Decisions.md",
+                "revision": "2007534715c8882cb4240a487905f05337fccc75"
+              }
+            ],
+            "storage": "reference-digest-only"
+          }
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-checkpoint",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "restore",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "checkpoint_id": "memovale-checkpoint-e84219b09a71c025dbc8",
+          "envelope_id": "envelope-conformance",
+          "reference_ids": [
+            "memovale-c3e663ff7f69ef3c0bb3",
+            "memovale-639a465e7b7e5e061ec1",
+            "memovale-cc45de5c3a1b8e8b97ba"
+          ],
+          "restored": true
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-restore",
+        "status": "ok",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "propose_knowledge",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [],
+        "message_type": "response",
+        "payload": {
+          "proposal": {
+            "body": "Conformance proposal only; do not write this text.",
+            "candidate_id": "candidate-conformance-decision",
+            "duplicate_paths": [
+              "Project OS/05 Decisions/Decisions.md"
+            ],
+            "frontmatter": {
+              "created": "2026-09-12",
+              "evidence": "L2",
+              "lifecycle": "draft",
+              "status": "proposed",
+              "type": "decision",
+              "updated": "2026-09-12"
+            },
+            "mapped_type": "decision",
+            "proposed_at": "2026-09-12T20:12:40.035Z",
+            "requires_human": true,
+            "source_reference_ids": [
+              "memovale-cc45de5c3a1b8e8b97ba"
+            ],
+            "suggested_path": "Project OS/05 Decisions/Decisions.md",
+            "title": "Decisions",
+            "write_performed": false
+          }
+        },
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-propose_knowledge",
+        "status": "ok",
+        "warnings": [
+          "A note with the same heading already exists; review before promotion."
+        ]
+      }
+    },
+    {
+      "operation": "propose_knowledge",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [
+          {
+            "code": "managed-write-forbidden",
+            "message": "MemoValeOS provider does not perform managed writes.",
+            "protocol_version": "1.0",
+            "retryable": false
+          }
+        ],
+        "message_type": "response",
+        "payload": {},
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-managed-write-negative",
+        "status": "error",
+        "warnings": []
+      }
+    },
+    {
+      "operation": "restore",
+      "response": {
+        "adapter_extensions": {},
+        "errors": [
+          {
+            "code": "checkpoint-digest-mismatch",
+            "message": "Checkpoint source changed: MemoValeOS/CLAUDE.md",
+            "protocol_version": "1.0",
+            "retryable": false
+          }
+        ],
+        "message_type": "response",
+        "payload": {},
+        "protocol_version": "1.0",
+        "provider_id": "memovale",
+        "provider_version": "0.1.0",
+        "request_id": "request-restore-changed-negative",
+        "status": "error",
+        "warnings": []
+      }
+    }
+  ],
+  "status": "passed",
+  "summary": {
+    "failed": 0,
+    "passed": 15
+  }
+}

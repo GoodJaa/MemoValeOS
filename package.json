@@ -1,0 +1,20 @@
+{
+  "name": "memovaleos",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Knowledge-OS + Project-OS validator and tooling. Standalone from a plain git clone.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "validate-vault": "node \"Knowledge-OS/Tools/validate-vault.mjs\"",
+    "context-provider": "node \"Knowledge-OS/Tools/context-provider.mjs\"",
+    "test:context-provider": "node --test \"Knowledge-OS/Tools/context-provider.test.mjs\"",
+    "test": "node --test \"Knowledge-OS/Dist/hooks/budget-audit.test.mjs\" \"Knowledge-OS/Tools/validate-vault.test.mjs\" \"Knowledge-OS/Tools/adopt.test.mjs\" \"Knowledge-OS/Tools/context-provider.test.mjs\" \"Knowledge-OS/Tools/context-metrics.test.mjs\" \"Knowledge-OS/Tools/os-patch.test.mjs\" \"Knowledge-OS/Tools/upgrade.test.mjs\" \"Knowledge-OS/Tools/graph-report.test.mjs\" \"Knowledge-OS/Tools/stale-check.test.mjs\" \"Knowledge-OS/Tools/os-share.test.mjs\"",
+    "os-share": "node \"Knowledge-OS/Tools/os-share.mjs\""
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

@@ -1,0 +1,14 @@
+# Normalise line endings so core.autocrlf on any one machine cannot make
+# byte-identical files show up as modified — for a reproducible diff.
+* text=auto eol=lf
+
+*.base text eol=lf
+*.mjs  text eol=lf
+
+# Attachments are not text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.mcpb binary
