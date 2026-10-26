@@ -60,6 +60,9 @@
  *   node "Knowledge-OS/Tools/adopt.mjs" --project <dir>         # target root, if not derivable
  *   node "Knowledge-OS/Tools/adopt.mjs" --standalone            # the vault is the project itself
  *   node "Knowledge-OS/Tools/adopt.mjs" --language ru --notes split   # the project's language, in mvos.config.json
+ *   node "Knowledge-OS/Tools/adopt.mjs" --apply --local --exclude-host-claude-md
+ *                       # stop the team's CLAUDE.md loading in your sessions,
+ *                       # once its rules are inherited Decisions in the vault
  *   node "Knowledge-OS/Tools/adopt.mjs" --json
  *
  * The mode is the flag; else the install record's; else `team` if a team
@@ -75,7 +78,7 @@
  * found the install incomplete or stale; 2 applied, but a step refused
  * (unparseable settings.json, or a file of ours edited and --yes absent).
  */
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, realpathSync } from "node:fs";
 import { join, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -114,6 +117,10 @@ if (NOTES !== null && !NOTES_POLICIES.includes(NOTES)) {
 
 const TEAM_CLASSES = ["commands", "hooks", "settings", "claude-md", "gitignore"];
 const LOCAL_CLASSES = ["plugin", "rules", "exclude"];
+/* Taken only when asked for: it hides a file the team owns from this
+ * person's sessions, which is right only once its rules live in the vault. */
+const LOCAL_OPTIONAL = ["host-claude-md"];
+const EXCLUDE_HOST_CLAUDE_MD = flag("--exclude-host-claude-md");
 
 if (flag("--team") && flag("--local")) {
   console.error("Choose one mode: --team or --local.");
@@ -139,6 +146,13 @@ const norm = (s) => s.replace(/\r\n/g, "\n");
 const isMv = (n) => /^mv-[^/\\]+\.md$/.test(n);
 /* LF-normalised, so a checkout with autocrlf does not read as a local edit. */
 const sha256 = (s) => createHash("sha256").update(norm(s)).digest("hex");
+
+/* A file of the host's keeps its own line endings. A checkout with autocrlf
+ * has CRLF on disk; writing it back with LF would change every line of a file
+ * the install added one block to, and --uninstall could not give it back byte
+ * for byte. Text is handled with LF throughout and converted on the way out. */
+const eolOf = (text) => (typeof text === "string" && text.includes("\r\n") ? "\r\n" : "\n");
+const asEol = (text, eol) => (eol === "\n" ? text : text.replace(/\n/g, eol));
 
 function readIfExists(p) {
   try {
@@ -202,7 +216,14 @@ const RECORD_OK = RECORD && !RECORD.unreadable;
  * like that, and the toplevel rule deployed `.claude/` into the vault itself,
  * where Claude Code never looks. Both readings are legitimate (an embedded
  * install, or a standalone vault that happens to live inside a checkout), so
- * the human names one. */
+ * the human names one.
+ *
+ * A second case is refused for the same reason: a vault below the top of its
+ * repository, as in a package of a monorepo. Claude Code reads
+ * `.claude/settings.json` — the budget hook — only in the folder it is started
+ * in, and a session started in a package works inside that package. The
+ * toplevel rule would install at the repository root, which is right only if
+ * Claude is started there, and nothing here can see where it is started. */
 function detectProjectRoot() {
   const explicit = value("--project");
   if (explicit) return { root: resolve(explicit), how: "--project" };
@@ -222,6 +243,18 @@ function detectProjectRoot() {
           `  --standalone           the vault is the project itself`,
       };
     }
+  }
+  if (top && !samePath(top, VAULT) && !samePath(top, dirname(VAULT))) {
+    return {
+      refuse:
+        `The vault is not at the top of its git repository:\n` +
+        `  vault        : ${VAULT}\n` +
+        `  repository   : ${top}\n` +
+        `Claude Code reads .claude/settings.json only in the folder it is started in, and a\n` +
+        `session started in a subfolder works inside it. Say which folder you start Claude in:\n` +
+        `  --project "${top}"   the repository root\n` +
+        `  --project "${dirname(VAULT)}"   the folder that holds the vault (a package of a monorepo)`,
+    };
   }
   if (top) return { root: top, how: "git toplevel" };
   return { root: dirname(VAULT), how: "the vault's parent (no git repository)" };
@@ -250,6 +283,17 @@ const VAULT_REL = relative(PROJECT, VAULT).split(sep).join("/");
 const posixFromProject = (p) => relative(PROJECT, p).split(sep).join("/");
 const IS_STANDALONE = samePath(PROJECT, VAULT);
 const PROJECT_IS_GIT = gitToplevel(PROJECT) !== null;
+
+/* The project root's path inside its repository, `packages/api/` or empty.
+ * Patterns in `.git/info/exclude` that start with `/` are anchored at the
+ * repository's top, not at the project root. */
+function gitPrefix() {
+  try {
+    return execFileSync("git", ["rev-parse", "--show-prefix"], { cwd: PROJECT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  } catch {
+    return "";
+  }
+}
 
 function gitTracked(rel) {
   try {
@@ -312,9 +356,21 @@ if (MODE === "local" && IS_STANDALONE) {
   process.exit(1);
 }
 
-const MODE_CLASSES = MODE === "local" ? LOCAL_CLASSES : TEAM_CLASSES;
+if (EXCLUDE_HOST_CLAUDE_MD && MODE !== "local") {
+  console.error("--exclude-host-claude-md is for the personal install (--local). In a team install CLAUDE.md carries the redirect, and hiding it would hide the OS.");
+  process.exit(1);
+}
+
+/* The optional class stays in scope once applied: a later apply keeps it and
+ * an uninstall takes it out, without the flag being repeated. */
+const recordHasClass = (cls) => RECORD_OK && (RECORD.blocks ?? []).some((b) => b.class === cls);
+const MODE_CLASSES = MODE === "local" ? [...LOCAL_CLASSES, ...LOCAL_OPTIONAL] : TEAM_CLASSES;
 const only = value("--only");
-const CLASSES = only ? only.split(",").map((c) => c.trim()).filter(Boolean) : MODE_CLASSES;
+const CLASSES = only
+  ? only.split(",").map((c) => c.trim()).filter(Boolean)
+  : MODE === "local"
+    ? [...LOCAL_CLASSES, ...LOCAL_OPTIONAL.filter((c) => UNINSTALL || (c === "host-claude-md" && EXCLUDE_HOST_CLAUDE_MD) || recordHasClass(c))]
+    : TEAM_CLASSES;
 for (const c of CLASSES) {
   if (!MODE_CLASSES.includes(c)) {
     console.error(`Unknown class \`${c}\` for mode ${MODE}. Known: ${MODE_CLASSES.join(", ")}`);
@@ -472,7 +528,7 @@ function planSettings() {
       relative(PROJECT, target),
       `replace ${ours.length} older budget hook entr${ours.length === 1 ? "y" : "ies"} with the current one (exec form, budget-audit.cjs)`
     );
-    return { mode: "replace", frag, target, parsed };
+    return { mode: "replace", frag, target, parsed, eol: eolOf(s.raw) };
   }
 
   const existingMatcher = (parsed.hooks?.PreToolUse ?? []).find((m) => m?.matcher === frag.matcher);
@@ -484,7 +540,7 @@ function planSettings() {
       ? `append the hook to the existing \`${frag.matcher}\` matcher`
       : `append a new \`${frag.matcher}\` matcher to PreToolUse`
   );
-  return { mode: "merge", frag, target, parsed };
+  return { mode: "merge", frag, target, parsed, eol: eolOf(s.raw) };
 }
 
 /* Our entries out, everything of the host's in place; a matcher left with no
@@ -518,7 +574,7 @@ function applySettings(plan) {
   if (plan.mode === "replace") {
     /* The first of our entries becomes the current one, in place, so its
      * position among the host's own hooks is kept; any further copies go. */
-    writeFileSync(plan.target, JSON.stringify(withoutOurHooks(plan.parsed, plan.frag.hooks[0]), null, 2) + "\n", "utf8");
+    writeFileSync(plan.target, asEol(JSON.stringify(withoutOurHooks(plan.parsed, plan.frag.hooks[0]), null, 2) + "\n", plan.eol), "utf8");
     return;
   }
   const obj = plan.parsed;
@@ -531,7 +587,7 @@ function applySettings(plan) {
   } else {
     obj.hooks.PreToolUse.push(plan.frag);
   }
-  writeFileSync(plan.target, JSON.stringify(obj, null, 2) + "\n", "utf8");
+  writeFileSync(plan.target, asEol(JSON.stringify(obj, null, 2) + "\n", plan.eol), "utf8");
 }
 
 /* ------------------------------------------------------ team: CLAUDE.md */
@@ -577,7 +633,7 @@ function planClaudeMd() {
    * already correct instead. */
   if (norm(existing).trim() === body) {
     act(cls, "mark", relative(PROJECT, target), "redirect already correct; markers added");
-    return { mode: "mark", target, block };
+    return { mode: "mark", target, block, existing };
   }
   /* The host's own CLAUDE.md, unmarked. Its body is knowledge — possibly the
    * only written record of how that project works — so it stays in place,
@@ -596,7 +652,7 @@ function planClaudeMd() {
 function applyClaudeMd(plan) {
   if (!plan) return;
   if (plan.mode === "create" || plan.mode === "mark") {
-    writeFileSync(plan.target, plan.block, "utf8");
+    writeFileSync(plan.target, asEol(plan.block, eolOf(plan.existing)), "utf8");
     return;
   }
   const body = norm(plan.existing);
@@ -609,7 +665,7 @@ function applyClaudeMd(plan) {
       `Project-OS deliberately, item by item; what has no home stays here.\n\n`;
     writeFileSync(plan.inbox, provenance + body.replace(/\s*$/, "") + "\n", "utf8");
   }
-  writeFileSync(plan.target, plan.block + "\n" + body.replace(/^\s*/, ""), "utf8");
+  writeFileSync(plan.target, asEol(plan.block + "\n" + body.replace(/^\s*/, ""), eolOf(plan.existing)), "utf8");
 }
 
 /* ------------------------------------------------------ team: gitignore */
@@ -643,7 +699,7 @@ function planGitignore() {
 function applyGitignore(plan) {
   if (!plan) return;
   const body = plan.existing ? norm(plan.existing).replace(/\s*$/, "") + "\n\n" : "";
-  writeFileSync(plan.target, body + IGNORE_BLOCK.join("\n") + "\n", "utf8");
+  writeFileSync(plan.target, asEol(body + IGNORE_BLOCK.join("\n") + "\n", eolOf(plan.existing)), "utf8");
 }
 
 /* ----------------------------------------------- local: rules, exclude, plugin */
@@ -682,7 +738,8 @@ function applyRules() {
 
 /* `.git/info/exclude` is git's own ignore file that is never committed or
  * shared — what a personal install needs instead of `.gitignore`, which the
- * team owns. `--git-path` finds it in a worktree too, where `.git` is a file. */
+ * team owns. `--git-path` finds it in a worktree too, where `.git` is a file:
+ * there it is the main repository's file, one for every worktree. */
 const EXCLUDE_BEGIN = "# >>> MemoValeOS personal install (adopt.mjs --local)";
 const EXCLUDE_END = "# <<< MemoValeOS";
 
@@ -696,13 +753,14 @@ function excludeFile() {
 }
 
 function excludeBlock() {
+  const at = `/${gitPrefix()}`;
   return [
     EXCLUDE_BEGIN,
-    `/${VAULT_REL}/`,
-    "/.claude/rules/memovaleos.md",
-    "/.claude/budget.json",
-    "/.claude/budget-audit.jsonl",
-    "/.claude/settings.local.json",
+    `${at}${VAULT_REL}/`,
+    `${at}.claude/rules/memovaleos.md`,
+    `${at}.claude/budget.json`,
+    `${at}.claude/budget-audit.jsonl`,
+    `${at}.claude/settings.local.json`,
     EXCLUDE_END,
   ].join("\n");
 }
@@ -760,23 +818,39 @@ function applyExclude(plan) {
   if (!plan) return;
   const rest = withoutBlock(plan.have, EXCLUDE_BEGIN, EXCLUDE_END).replace(/\s*$/, "");
   ensureDir(dirname(plan.file));
-  writeFileSync(plan.file, (rest ? rest + "\n\n" : "") + excludeBlock() + "\n", "utf8");
+  writeFileSync(plan.file, asEol((rest ? rest + "\n\n" : "") + excludeBlock() + "\n", eolOf(plan.have)), "utf8");
 }
 
 /* The plugin is installed by Claude Code itself, and its commands change
  * Claude Code's own configuration — the human runs them. Whether it is
- * already there is read from the project's settings.local.json, where a
- * local-scope install records it. */
+ * already there is read from settings.local.json, where a local-scope install
+ * records it. Claude Code keeps that file at the root of the main checkout —
+ * above a package of a monorepo, outside a linked worktree — except on Windows
+ * and in older versions, where it stays in the folder Claude is started in.
+ * Both places are read. */
 const PLUGIN_ID = "mv@memovaleos";
 const MARKETPLACE = "memovaleos";
 
-function pluginEnabled() {
+function mainCheckoutRoot() {
   try {
-    const s = JSON.parse(readFileSync(join(CLAUDE_DIR, "settings.local.json"), "utf8"));
-    return s?.enabledPlugins?.[PLUGIN_ID] === true;
+    const out = execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: PROJECT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    const first = out.split("\n").find((l) => l.startsWith("worktree "));
+    return first ? resolve(first.slice("worktree ".length).trim().split("/").join(sep)) : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function pluginEnabled() {
+  const roots = [PROJECT, mainCheckoutRoot()].filter(Boolean);
+  return roots.some((root) => {
+    try {
+      const s = JSON.parse(readFileSync(join(root, ".claude", "settings.local.json"), "utf8"));
+      return s?.enabledPlugins?.[PLUGIN_ID] === true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 function planPlugin() {
@@ -806,6 +880,122 @@ function planPlugin() {
   }
 }
 
+/* ------------------------------------- local: the host's CLAUDE.md, hidden */
+
+/* A personal install leaves the team's CLAUDE.md loading beside the rules
+ * file. Once its rules are in the vault as inherited Decisions (Deployment
+ * Protocol §7), loading both spends context on the same rules twice — on the
+ * first real installation the file was 404 lines. `claudeMdExcludes` in
+ * settings.local.json takes it out of this person's sessions only; the team
+ * and the file are untouched. It stops the file loading at launch, nothing
+ * more: the assistant can still read it when asked.
+ *
+ * Claude Code matches the pattern against the absolute path, as a glob and
+ * case-sensitively — checked by running 2.1.310 on Windows, 2026-10-26: `C:/…`
+ * and `C:\…` both matched, `c:/…` did not. Which drive letter Claude Code sees
+ * depends on what started it, so the letter is written as `{C,c}`, and the rest
+ * of the path in its true case. */
+const LOCAL_SETTINGS = join(CLAUDE_DIR, "settings.local.json");
+const HOST_CLAUDE_MD = join(PROJECT, "CLAUDE.md");
+const HOST_PATTERN = (() => {
+  let p;
+  try {
+    p = realpathSync.native(HOST_CLAUDE_MD);
+  } catch {
+    p = resolve(HOST_CLAUDE_MD);
+  }
+  p = p.split(sep).join("/");
+  const drive = /^([A-Za-z]):\//.exec(p);
+  return drive ? `{${drive[1].toUpperCase()},${drive[1].toLowerCase()}}${p.slice(1)}` : p;
+})();
+const yaml = MODE === "local" && CLASSES.includes("host-claude-md") && !UNINSTALL ? await import("./vendor/js-yaml.mjs") : null;
+
+/* Decisions in the vault that carry a rule from that file: `origin:
+ * inherited` with a `source` naming it, by its path in the repository. */
+function inheritedDecisionsCiting(repoRel) {
+  const found = [];
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!e.name.startsWith(".") && e.name !== "Templates") walk(p);
+        continue;
+      }
+      if (!e.name.endsWith(".md")) continue;
+      const text = norm(readFileSync(p, "utf8"));
+      const end = text.startsWith("---\n") ? text.indexOf("\n---", 3) : -1;
+      if (end === -1) continue;
+      let fm;
+      try {
+        fm = yaml.load(text.slice(4, end));
+      } catch {
+        continue;
+      }
+      if (String(fm?.type ?? "").toLowerCase() === "decision" && fm.origin === "inherited" && Array.isArray(fm.source) && fm.source.some((s) => s?.path === repoRel)) {
+        found.push(p);
+      }
+    }
+  };
+  walk(join(VAULT, "Project-OS"));
+  return found;
+}
+
+function planHostClaudeMd() {
+  const cls = "host-claude-md";
+  const where = posixFromProject(LOCAL_SETTINGS);
+  if (!existsSync(HOST_CLAUDE_MD)) {
+    note(cls, "CLAUDE.md", "the project has no CLAUDE.md; nothing to hide");
+    return null;
+  }
+  const s = readSettings(cls, LOCAL_SETTINGS);
+  if (s.unreadable) return null;
+  const list = s.parsed?.claudeMdExcludes;
+  if (list !== undefined && !Array.isArray(list)) {
+    refuse(cls, where, "`claudeMdExcludes` there is not a list; left untouched");
+    return null;
+  }
+  if (list?.includes(HOST_PATTERN)) {
+    note(cls, where, "the team's CLAUDE.md is already excluded from your sessions");
+    return null;
+  }
+  /* Hiding the file before its rules are in the vault would take them out of
+   * the assistant's context with nothing in their place. */
+  const repoRel = `${gitPrefix()}CLAUDE.md`;
+  const carriers = inheritedDecisionsCiting(repoRel);
+  if (carriers.length === 0 && !YES) {
+    refuse(
+      cls,
+      "CLAUDE.md",
+      `no Decision in the vault has \`origin: inherited\` with a \`source\` naming \`${repoRel}\`. Hiding the file now would take the team's rules out of your sessions with nothing in their place: distribute them first (Deployment-Protocol §7), or pass --yes`
+    );
+    return null;
+  }
+  act(cls, s.raw === null ? "create" : "merge", where, `claudeMdExcludes gains ${HOST_PATTERN}: the team's CLAUDE.md stops loading in your sessions; ${carriers.length} inherited Decision(s) carry its rules`);
+  return { target: LOCAL_SETTINGS, parsed: s.parsed ?? {}, eol: eolOf(s.raw) };
+}
+
+function applyHostClaudeMd(plan) {
+  if (!plan) return;
+  plan.parsed.claudeMdExcludes = [...(plan.parsed.claudeMdExcludes ?? []), HOST_PATTERN];
+  ensureDir(dirname(plan.target));
+  writeFileSync(plan.target, asEol(JSON.stringify(plan.parsed, null, 2) + "\n", plan.eol), "utf8");
+}
+
+function hostClaudeMdHidden() {
+  try {
+    const s = JSON.parse(readFileSync(LOCAL_SETTINGS, "utf8"));
+    return Array.isArray(s?.claudeMdExcludes) && s.claudeMdExcludes.includes(HOST_PATTERN);
+  } catch {
+    return false;
+  }
+}
+
 /* -------------------------------------------------------------- uninstall */
 
 /* What is ours, taken out in the order that cannot strand the host: the hook
@@ -826,7 +1016,7 @@ function planUninstallFiles(cls, dir, matches, distDir) {
   }
 }
 
-const uninstall = { settings: null, claudeMd: null, gitignore: null, exclude: null };
+const uninstall = { settings: null, claudeMd: null, gitignore: null, exclude: null, hostClaudeMd: null };
 
 function planUninstall() {
   if (MODE === "local") {
@@ -847,13 +1037,18 @@ function planUninstall() {
         uninstall.exclude = { file, have };
       }
     }
+    if (CLASSES.includes("host-claude-md") && hostClaudeMdHidden()) {
+      const s = readSettings("host-claude-md", LOCAL_SETTINGS);
+      act("host-claude-md", "remove-entry", posixFromProject(LOCAL_SETTINGS), "our claudeMdExcludes entry out; the team's CLAUDE.md loads in your sessions again");
+      uninstall.hostClaudeMd = { target: LOCAL_SETTINGS, parsed: s.parsed, eol: eolOf(s.raw) };
+    }
   } else {
     if (CLASSES.includes("settings")) {
       const target = join(CLAUDE_DIR, "settings.json");
       const s = readSettings("settings", target);
       if (s.parsed && ourHookEntries(s.parsed).length) {
         act("settings", "remove-entry", posixFromProject(target), "the budget hook entry out, the project's hooks in place");
-        uninstall.settings = { target, parsed: s.parsed };
+        uninstall.settings = { target, parsed: s.parsed, eol: eolOf(s.raw) };
       }
     }
     if (CLASSES.includes("hooks")) planUninstallFiles("hooks", join(CLAUDE_DIR, "hooks"), isOurHookFile, join(DIST, "hooks"));
@@ -868,7 +1063,7 @@ function planUninstall() {
         let rest = withoutBlock(have, BEGIN, END);
         if (block.start === 0) rest = rest.replace(/^\n/, "");
         act("claude-md", rest.trim() === "" ? "delete" : "remove-block", "CLAUDE.md", rest.trim() === "" ? "nothing but our redirect; the file goes" : "the redirect out, the project's text as it was");
-        uninstall.claudeMd = { target, rest };
+        uninstall.claudeMd = { target, rest, eol: eolOf(have) };
       }
     }
     if (CLASSES.includes("gitignore")) {
@@ -889,12 +1084,12 @@ function applyUninstall() {
   if (uninstall.settings) {
     const obj = withoutOurHooks(uninstall.settings.parsed);
     if (Object.keys(obj).length === 0) rmSync(uninstall.settings.target, { force: true });
-    else writeFileSync(uninstall.settings.target, JSON.stringify(obj, null, 2) + "\n", "utf8");
+    else writeFileSync(uninstall.settings.target, asEol(JSON.stringify(obj, null, 2) + "\n", uninstall.settings.eol), "utf8");
   }
   for (const cls of ["hooks", "commands", "rules"]) for (const a of actions) if (a.cls === cls && a.kind === "delete") del(a.path);
   if (uninstall.claudeMd) {
     if (uninstall.claudeMd.rest.trim() === "") rmSync(uninstall.claudeMd.target, { force: true });
-    else writeFileSync(uninstall.claudeMd.target, uninstall.claudeMd.rest, "utf8");
+    else writeFileSync(uninstall.claudeMd.target, asEol(uninstall.claudeMd.rest, uninstall.claudeMd.eol), "utf8");
   }
   if (uninstall.gitignore) {
     const t = norm(uninstall.gitignore.have);
@@ -904,13 +1099,62 @@ function applyUninstall() {
     if (before > 1 && t[before - 1] === "\n" && t[before - 2] === "\n") before--;
     const rest = t.slice(0, before) + t.slice(i + blk.length);
     if (rest.trim() === "") rmSync(uninstall.gitignore.target, { force: true });
-    else writeFileSync(uninstall.gitignore.target, rest, "utf8");
+    else writeFileSync(uninstall.gitignore.target, asEol(rest, eolOf(uninstall.gitignore.have)), "utf8");
   }
-  if (uninstall.exclude) writeFileSync(uninstall.exclude.file, withoutBlock(uninstall.exclude.have, EXCLUDE_BEGIN, EXCLUDE_END), "utf8");
+  if (uninstall.exclude) {
+    const { file, have } = uninstall.exclude;
+    writeFileSync(file, asEol(withoutBlock(have, EXCLUDE_BEGIN, EXCLUDE_END), eolOf(have)), "utf8");
+  }
+  if (uninstall.hostClaudeMd) {
+    /* Only our entry goes. A file left holding nothing goes too: Claude Code
+     * writes its own keys there, and an empty object is nobody's. */
+    const { target, parsed, eol } = uninstall.hostClaudeMd;
+    const rest = parsed.claudeMdExcludes.filter((p) => p !== HOST_PATTERN);
+    if (rest.length) parsed.claudeMdExcludes = rest;
+    else delete parsed.claudeMdExcludes;
+    if (Object.keys(parsed).length === 0) rmSync(target, { force: true });
+    else writeFileSync(target, asEol(JSON.stringify(parsed, null, 2) + "\n", eol), "utf8");
+  }
   rmSync(RECORD_PATH, { force: true });
 }
 
 /* ------------------------------------------------------------------ census */
+
+/* Signs of a knowledge system that is not ours. They are named, never
+ * touched: the first real installation found another tool's hook, skills and
+ * ~3500 files of task folders in docs/, and its owner had to discover them. */
+const FOREIGN_MARKERS = ["memory-bank", ".cursor/rules", ".cursorrules", ".windsurf/rules", ".windsurfrules", ".clinerules", ".kiro", ".github/copilot-instructions.md"];
+const LARGE_DOCS = 50;
+
+function otherKnowledgeSigns() {
+  const signs = FOREIGN_MARKERS.filter((p) => existsSync(join(PROJECT, ...p.split("/"))));
+  let md = 0;
+  const walk = (dir, depth) => {
+    if (md >= 10000 || depth > 8 || samePath(dir, VAULT)) return;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!e.name.startsWith(".") && e.name !== "node_modules") walk(join(dir, e.name), depth + 1);
+      } else if (e.name.endsWith(".md")) md++;
+    }
+  };
+  walk(join(PROJECT, "docs"), 0);
+  if (md >= LARGE_DOCS) signs.push(`docs/ (${md >= 10000 ? "10000+" : md} markdown files)`);
+  try {
+    const s = JSON.parse(readFileSync(join(CLAUDE_DIR, "settings.json"), "utf8"));
+    let n = 0;
+    for (const matchers of Object.values(s?.hooks ?? {})) for (const m of Array.isArray(matchers) ? matchers : []) for (const h of m?.hooks ?? []) if (!isOurHook(h)) n++;
+    if (n) signs.push(`${n} hook(s) of another tool in .claude/settings.json`);
+  } catch {
+    /* no settings, or unreadable: the settings row says which */
+  }
+  return signs;
+}
 
 function census() {
   const rows = [];
@@ -980,7 +1224,12 @@ function census() {
       /* absent */
     }
   }
+  const others = otherKnowledgeSigns();
+  rows.push(["other knowledge", others.length ? `${others.join("; ")} — keep it, name it, link it (Deployment-Protocol §10)` : "none found"]);
   if (MODE === "local") rows.push([`plugin ${PLUGIN_ID}`, pluginEnabled() ? "enabled for this project" : "not installed"]);
+  if (MODE === "local" && claudeMd !== null) {
+    rows.push(["CLAUDE.md for you", hostClaudeMdHidden() ? "excluded (claudeMdExcludes): its rules come from the vault" : "loads beside the rules file"]);
+  }
   return rows;
 }
 
@@ -1025,6 +1274,7 @@ function currentDeployment() {
   const exText = ex ? readIfExists(ex) : null;
   if (exText !== null && blockIn(exText, EXCLUDE_BEGIN, EXCLUDE_END)) blocks.push({ path: posixFromProject(ex), class: "exclude", marker: EXCLUDE_BEGIN });
   if (pluginEnabled()) blocks.push({ path: ".claude/settings.local.json", class: "plugin", plugin: PLUGIN_ID });
+  if (hostClaudeMdHidden()) blocks.push({ path: posixFromProject(LOCAL_SETTINGS), class: "host-claude-md", entry: HOST_PATTERN });
   return { files, blocks };
 }
 
@@ -1106,6 +1356,7 @@ if (UNINSTALL) {
   if (CLASSES.includes("plugin")) planPlugin();
   if (CLASSES.includes("rules")) planRules();
   if (CLASSES.includes("exclude")) plans.exclude = planExclude();
+  if (CLASSES.includes("host-claude-md")) plans.hostClaudeMd = planHostClaudeMd();
 } else {
   if (CLASSES.includes("commands")) planCopies("commands", "commands", isMv);
   if (CLASSES.includes("hooks")) planHooks();
@@ -1124,6 +1375,7 @@ function applyCommand() {
   if (value("--project")) parts.push(`--project "${PROJECT}"`);
   if (STANDALONE) parts.push("--standalone");
   if (only) parts.push(`--only ${CLASSES.join(",")}`);
+  if (EXCLUDE_HOST_CLAUDE_MD) parts.push("--exclude-host-claude-md");
   if (LANGUAGE) parts.push(`--language ${LANGUAGE}`);
   if (NOTES) parts.push(`--notes ${NOTES}`);
   if (YES) parts.push("--yes");
@@ -1220,6 +1472,7 @@ if (UNINSTALL) {
   if (CLASSES.includes("claude-md")) applyClaudeMd(plans.claudeMd);
   if (CLASSES.includes("gitignore")) applyGitignore(plans.gitignore);
   if (CLASSES.includes("exclude")) applyExclude(plans.exclude);
+  if (CLASSES.includes("host-claude-md")) applyHostClaudeMd(plans.hostClaudeMd);
   if (plans.config) writeFileSync(CONFIG_PATH, plans.config, "utf8");
 
   /* Written last, from what is on disk now rather than from the plan, so the

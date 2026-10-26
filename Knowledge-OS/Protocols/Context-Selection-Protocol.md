@@ -3,7 +3,7 @@ type: protocol
 status: active
 lifecycle: active
 created: 2026-08-24
-updated: 2026-09-14
+updated: 2026-10-26
 ---
 # Context Selection Protocol
 
@@ -106,9 +106,14 @@ Examples:
 
 - parser research → when changing parser behavior;
 - performance research → when optimizing performance;
-- architectural Decision → when changing the affected architecture.
+- architectural Decision → when changing the affected architecture;
+- the project's Environment note (`Project-OS/06-AI/Context/Environment.md`) → when the Task needs to run something: tests, a build, the project's tools, a service.
 
 Do not load conditional context by default.
+
+### The environment is read, not rediscovered
+
+Before finding out how to run anything — which Node, which test command, where the database is — read the Environment note if the project has one, and run the command its row names. Asking `node -v`, listing version managers, or probing scripts that the note already records is rediscovery: on the first real installation it happened in most sessions until the note existed. When a row's command fails, or what it describes has changed, fix the row and its date in the same session rather than working around it. A project with no Environment note gets one from the template the first time a Task has to find any of this out.
 
 ## 6. Verify
 

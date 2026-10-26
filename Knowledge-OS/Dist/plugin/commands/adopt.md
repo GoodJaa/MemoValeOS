@@ -1,6 +1,6 @@
 ---
 description: Install MemoValeOS into this project — personal (plugin, no tracked file changes) or team (copies) — or take it out; you plan, the owner applies
-argument-hint: "[--local|--team] [--uninstall] [--only <classes>]"
+argument-hint: "[--local|--team] [--uninstall] [--exclude-host-claude-md] [--only <classes>]"
 allowed-tools: Glob, Read, Bash(node:*), Bash(git:*)
 ---
 

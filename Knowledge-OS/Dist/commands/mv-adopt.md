@@ -1,6 +1,6 @@
 ---
 description: Install MemoValeOS into this project — personal (plugin, no tracked file changes) or team (copies) — or take it out; you plan, the owner applies
-argument-hint: "[--local|--team] [--uninstall] [--only <classes>]"
+argument-hint: "[--local|--team] [--uninstall] [--exclude-host-claude-md] [--only <classes>]"
 allowed-tools: Read, Bash(node:*), Bash(git:*)
 ---
 
@@ -16,7 +16,7 @@ node "<vault-root>/Knowledge-OS/Tools/mv.cjs" adopt $ARGUMENTS
 
 This writes nothing. It prints which root and which mode it took and why, a census of what the project already has, and a numbered list of what it proposes. Relay that output **verbatim** — the human decides from it, and a summary is not the list.
 
-If it refuses (a vault with its own `.git` inside another repository, or no mode chosen), relay the refusal and ask which option the human wants. Do not choose one.
+If it refuses (a vault with its own `.git` inside another repository, a vault below the top of its repository, or no mode chosen), relay the refusal and ask which option the human wants. For a vault below the top, the question is which folder they start Claude in. Do not choose one.
 
 ## Hand the apply to the owner
 
@@ -35,9 +35,13 @@ If a team install found the project's own `CLAUDE.md`, the script put the redire
 
 That distribution is yours to propose:
 
-1. Read `Project-OS/Inbox/Adopted CLAUDE.md`.
+1. Read `Project-OS/Inbox/Adopted CLAUDE.md` — or, in a personal install, the project's own `CLAUDE.md` when the owner wants its rules in the vault.
 2. Propose a numbered distribution — each item naming the target entity type and the destination note.
 3. Apply nothing without per-item approval. An instruction whose home is unclear stays in the Inbox rather than being filed somewhere plausible.
+
+A rule the team already follows becomes a Decision with `origin: inherited` and `source` naming the host file and the commit you read it at (`git log -1 --format=%h -- CLAUDE.md`), `status: proposed`, `lifecycle: draft`. When the owner confirms a rule as the project's, that is one edit: `status: accepted`, `lifecycle: active`, `evidence: user-provided`, `ratified: <today>` — no L2 needed (`Knowledge-OS/Schema/Evidence-Schema.md`, "A Decision inherited from the host").
+
+In a personal install, once the rules are in the vault, offer the owner `adopt --apply --local --exclude-host-claude-md`: the team's `CLAUDE.md` then stops loading in their sessions, so the same rules are not in context twice. It refuses while no inherited Decision cites the file.
 
 ## Then verify
 

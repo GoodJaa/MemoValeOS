@@ -188,6 +188,21 @@ function loadSchema(path) {
   for (const [type, floor] of Object.entries(data.evidenceFloorByType)) {
     if (!data.evidenceLevels.includes(floor)) schemaFail(`\`evidenceFloorByType.${type}\` is \`${floor}\`, not an evidence level`);
   }
+  /* An origin names the types it applies to and the fields it requires; a
+   * misspelling in either would switch the origin's requirement off without a
+   * word, so both are checked against what the schema defines. */
+  if (data.origins !== undefined && (!data.origins || typeof data.origins !== "object" || Array.isArray(data.origins))) {
+    schemaFail("`origins` must be an object");
+  }
+  for (const [origin, spec] of Object.entries(data.origins ?? {})) {
+    for (const key of ["types", "evidenceAlternatives", "requiredFields", "requiredFieldsWhenActive"]) {
+      if (!Array.isArray(spec?.[key]) || spec[key].some((v) => typeof v !== "string")) schemaFail(`\`origins.${origin}.${key}\` must be an array of strings`);
+    }
+    for (const type of spec.types) if (!types.includes(type)) schemaFail(`\`origins.${origin}.types\` names \`${type}\`, which is not a type`);
+    for (const field of [...spec.requiredFields, ...spec.requiredFieldsWhenActive]) {
+      if (!data.metadataKeys.includes(field)) schemaFail(`\`origins.${origin}\` requires \`${field}\`, which is not a metadata key`);
+    }
+  }
   return data;
 }
 
@@ -255,7 +270,26 @@ const EVIDENCE_FLOOR = schema.evidenceFloorByType;
  * that would have graded nothing. Treated as a satisfying alternative to the
  * floor rather than as a level, it records what is actually true of them. */
 const EVIDENCE_ALTERNATIVES = schema.evidenceAlternativeByType ?? {};
-const ALL_EVIDENCE_VALUES = [...EVIDENCE_LEVELS, ...Object.values(EVIDENCE_ALTERNATIVES).flat()];
+
+/* Where a note's knowledge came from, when that changes what it needs. The
+ * one origin so far is `inherited`: a rule the host team already followed
+ * before the OS arrived, filed as a Decision. Its authority is the team's
+ * adoption of it, not an observation of the running system, so it may stand
+ * on `user-provided` — the owner's ratification — in place of L2. In return
+ * it must name the host file and commit it was read from (`source`, which
+ * `stale-source` then watches) and, once relied on, the date it was ratified.
+ * The first real installation distributed its host's CLAUDE.md into
+ * Decisions by hand, and all seventeen of its Decisions stayed `proposed`:
+ * nothing about a team's rule can reach L2 (owner's decision, 2026-10-25).
+ * The project's own Decisions keep the L2 floor. The second origin,
+ * `imported`, marks a Task or Epic brought in from a tracker by
+ * task-import.mjs; it grants nothing and requires the tracker's `key`. */
+const ORIGINS = schema.origins ?? {};
+const ALL_EVIDENCE_VALUES = [
+  ...EVIDENCE_LEVELS,
+  ...Object.values(EVIDENCE_ALTERNATIVES).flat(),
+  ...Object.values(ORIGINS).flatMap((o) => o.evidenceAlternatives),
+];
 
 const errors = [];
 const warnings = [];
@@ -711,29 +745,75 @@ for (const [rel, note] of notes) {
         err(rel, "invalid-status", `status \`${fm.status}\` is not allowed for type \`${type}\` (expected: ${allowed.join(", ")})`);
       }
 
+      /* An origin applies only where the schema defines it for the type; an
+       * unknown one, or one on the wrong type, grants nothing and is said so. */
+      let origin = null;
+      if (present("origin")) {
+        const spec = ORIGINS[fm.origin];
+        if (!spec) {
+          err(rel, "invalid-metadata-value", `\`origin\` is \`${fm.origin}\`, expected one of: ${Object.keys(ORIGINS).join(", ") || "(none defined)"}`);
+        } else if (!spec.types.includes(type)) {
+          err(rel, "invalid-metadata-value", `\`origin: ${fm.origin}\` is defined for ${spec.types.join(", ")}, not for \`${type}\``);
+        } else {
+          origin = spec;
+        }
+      }
+      const alternatives = [...(EVIDENCE_ALTERNATIVES[type] ?? []), ...(origin?.evidenceAlternatives ?? [])];
+
       if (fm.evidence && !ALL_EVIDENCE_VALUES.includes(fm.evidence)) {
         err(rel, "unknown-evidence-level", `evidence \`${fm.evidence}\` is not defined by Evidence Schema`);
-      } else if (fm.evidence && !EVIDENCE_LEVELS.includes(fm.evidence) && !(EVIDENCE_ALTERNATIVES[type] ?? []).includes(fm.evidence)) {
+      } else if (fm.evidence && !EVIDENCE_LEVELS.includes(fm.evidence) && !alternatives.includes(fm.evidence)) {
         /* An alternative such as `user-provided` is not a level; Evidence
-         * Schema grants it type by type. Accepting it everywhere let a Finding
-         * or an Epic claim the owner's authority for what it says, and made the
-         * schema's own `evidenceAlternativeByType.resource` a no-op. */
-        const allowed = Object.entries(EVIDENCE_ALTERNATIVES)
-          .filter(([, values]) => values.includes(fm.evidence))
-          .map(([t]) => t);
+         * Schema grants it type by type, and an origin grants it to the notes
+         * that carry it. Accepting it everywhere let a Finding or an Epic claim
+         * the owner's authority for what it says, and made the schema's own
+         * `evidenceAlternativeByType.resource` a no-op. */
+        const allowed = [
+          ...Object.entries(EVIDENCE_ALTERNATIVES)
+            .filter(([, values]) => values.includes(fm.evidence))
+            .map(([t]) => t),
+          ...Object.entries(ORIGINS)
+            .filter(([, spec]) => spec.evidenceAlternatives.includes(fm.evidence))
+            .flatMap(([o, spec]) => spec.types.map((t) => `${t} with \`origin: ${o}\``)),
+        ];
         err(rel, "evidence-not-allowed-for-type", `evidence \`${fm.evidence}\` is accepted only for ${allowed.join(", ")}, not for \`${type}\``);
+      }
+
+      if (origin) {
+        /* `source` counts only as the list `stale-source` can check: a bare
+         * string there is skipped by that rule, and the citation would never
+         * be watched. */
+        const has = (f) =>
+          f === "source"
+            ? Array.isArray(fm.source) && fm.source.some((e) => typeof e?.path === "string" && ["string", "number"].includes(typeof e?.commit))
+            : present(f);
+        const missing = [
+          ...origin.requiredFields.filter((f) => !has(f)),
+          ...(fm.lifecycle === "active" ? origin.requiredFieldsWhenActive.filter((f) => !has(f)) : []),
+        ];
+        const why = {
+          source: "a list of {path, commit}: the file it was taken from and the commit it was read at",
+          ratified: "the date the owner ratified it",
+          key: "its key in the tracker it came from",
+        };
+        if (missing.length) {
+          err(rel, "origin-incomplete", `\`origin: ${fm.origin}\` requires ${missing.map((f) => `\`${f}\`${why[f] ? ` (${why[f]})` : ""}`).join(" and ")}`);
+        }
       }
 
       /* Metadata Schema defines these shapes; nothing used to check them, so a
        * `created: <YYYY-MM-DD>` copied from an example or `stale: yes` passed
        * as metadata that looks filled in and means nothing. */
-      for (const key of ["created", "updated"]) {
+      for (const key of ["created", "updated", "ratified"]) {
         if (fm[key] !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(fm[key]))) {
           err(rel, "invalid-metadata-value", `\`${key}\` is \`${fm[key]}\`, expected YYYY-MM-DD`);
         }
       }
       if (fm.stale !== undefined && typeof fm.stale !== "boolean") {
         err(rel, "invalid-metadata-value", `\`stale\` is \`${fm.stale}\`, expected true or false`);
+      }
+      if (fm.key !== undefined && (typeof fm.key !== "string" || fm.key.trim() === "")) {
+        err(rel, "invalid-metadata-value", `\`key\` is \`${fm.key}\`, expected the tracker's key as a string — quote it if it is all digits`);
       }
 
       if (fm.priority && !PRIORITIES.includes(fm.priority)) {
@@ -745,7 +825,6 @@ for (const [rel, note] of notes) {
       }
 
       const floor = EVIDENCE_FLOOR[type];
-      const alternatives = EVIDENCE_ALTERNATIVES[type] ?? [];
       if (fm.lifecycle === "active" && floor && fm.evidence && !alternatives.includes(fm.evidence)) {
         if (EVIDENCE_LEVELS.indexOf(fm.evidence) < EVIDENCE_LEVELS.indexOf(floor)) {
           const accepted = [floor, ...alternatives].join(" or ");
@@ -1105,7 +1184,31 @@ const CONFIG_KEYS = {
   format: { ok: (v) => v === 1, expected: "1" },
   language: { ok: (v) => typeof v === "string" && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v), expected: "a language tag such as ru, en, de or pt-BR" },
   notes: { ok: (v) => ["language", "english", "split"].includes(v), expected: "language, english or split" },
+  /* How Tasks are named and which comes next. `sequence` numbers them T01,
+   * T02… and the lowest open number is next; `external` names a Task by its
+   * key in the project's tracker, and the next one is the one a human names.
+   * The first real installation needed the second and built it by hand. */
+  tasks: {
+    ok: (v) =>
+      Boolean(v) &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      Object.keys(v).every((k) => ["keying", "keyPattern", "next"].includes(k)) &&
+      (v.keying === undefined || ["sequence", "external"].includes(v.keying)) &&
+      (v.next === undefined || ["lowest-number", "explicit"].includes(v.next)) &&
+      (v.keyPattern === undefined || (typeof v.keyPattern === "string" && compiles(v.keyPattern))),
+    expected: '{"keying": "sequence" | "external", "keyPattern": "<regular expression>", "next": "lowest-number" | "explicit"}, every key optional',
+  },
 };
+
+function compiles(pattern) {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 if (existsSync(CONFIG_PATH)) {
   let cfg;
@@ -1122,6 +1225,16 @@ if (existsSync(CONFIG_PATH)) {
         const spec = CONFIG_KEYS[key];
         if (!spec) err("mvos.config.json", "invalid-config", `unknown key \`${key}\`; known: ${Object.keys(CONFIG_KEYS).join(", ")}`);
         else if (!spec.ok(v)) err("mvos.config.json", "invalid-config", `\`${key}\` is ${JSON.stringify(v)}; expected ${spec.expected}`);
+      }
+      /* A key that does not look like the tracker's is most often a typo
+       * that will never match the ticket again. */
+      const pattern = CONFIG_KEYS.tasks.ok(cfg.tasks) ? cfg.tasks?.keyPattern : undefined;
+      if (pattern) {
+        const re = new RegExp(pattern);
+        for (const [rel, note] of notes) {
+          if (!isGoverned(rel) || !["task", "epic"].includes(typeOf(note.fm)) || typeof note.fm?.key !== "string") continue;
+          if (!re.test(note.fm.key)) err(rel, "invalid-metadata-value", `\`key\` is \`${note.fm.key}\`, which does not match \`tasks.keyPattern\` (${pattern}) in mvos.config.json`);
+        }
       }
     }
   }

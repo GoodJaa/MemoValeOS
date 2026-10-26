@@ -13,7 +13,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync, statSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync, statSync, renameSync } from "node:fs";
 import { join, dirname, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -430,6 +430,7 @@ function withGitProject(seed, fn, rootName) {
     cpSync(DIST_SRC, join(vault, "Knowledge-OS", "Dist"), { recursive: true });
     cpSync(join(VAULT_SRC, ".claude-plugin"), join(vault, ".claude-plugin"), { recursive: true });
     cpSync(join(HERE, "adopt.mjs"), join(vault, "Knowledge-OS", "Tools", "adopt.mjs"));
+    cpSync(join(HERE, "vendor"), join(vault, "Knowledge-OS", "Tools", "vendor"), { recursive: true });
     const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     git("init", "-q");
     git("config", "user.email", "fixture@example.invalid");
@@ -611,6 +612,207 @@ test("a project path with spaces installs and excludes correctly", () => {
     },
     "my project"
   );
+});
+
+/* ------------------------------------------ worktree, monorepo, line endings */
+
+const PLUGIN_ON = JSON.stringify({ enabledPlugins: { "mv@memovaleos": true } }, null, 2) + "\n";
+const adoptIn = (vault) => join(vault, "Knowledge-OS", "Tools", "adopt.mjs");
+
+/* A linked worktree has a `.git` file, not a directory, and no info/ of its
+ * own: git reads the main repository's exclude for every worktree. Claude Code
+ * keeps settings.local.json at the main checkout's root on Linux and macOS. */
+test("--local in a linked worktree excludes through the main repository and leaves both trees clean", () => {
+  withGitProject(
+    { "README.md": "# App\n" },
+    (main, seedVault, git) => {
+      const wt = join(dirname(main), "feature");
+      git("worktree", "add", "-q", wt, "-b", "feature");
+      const vault = join(wt, "MemoValeOS");
+      renameSync(seedVault, vault);
+      const status = (cwd) => execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" });
+      const exclude = excludeText(main);
+
+      const { code, stdout } = run(vault, ["--apply", "--local"]);
+      assert.equal(code, 0, stdout);
+      assert.ok(has(wt, ".claude/rules/memovaleos.md"), "the rules file is in the worktree, where Claude is started");
+      assert.ok(!has(main, ".claude"), "the main checkout is not touched");
+      assert.match(excludeText(main), /^\/MemoValeOS\/$/m);
+      assert.equal(status(wt), "");
+      assert.equal(status(main), "");
+
+      assert.equal(run(vault, ["--verify"]).code, 1);
+      mkdirSync(join(main, ".claude"));
+      writeFileSync(join(main, ".claude", "settings.local.json"), PLUGIN_ON);
+      assert.equal(run(vault, ["--verify"]).code, 0, "the plugin is found at the main checkout's root");
+      rmSync(join(main, ".claude"), { recursive: true });
+
+      assert.equal(run(vault, ["--uninstall", "--apply"]).code, 0);
+      assert.equal(excludeText(main), exclude, "the shared exclude comes back as it was");
+      assert.ok(!has(wt, ".claude/rules/memovaleos.md"));
+    },
+    "main"
+  );
+});
+
+/* A package of a monorepo, its vault inside the package. */
+function withMonorepo(fn) {
+  withGitProject({ "CLAUDE.md": TEAM_RULES, "packages/api/package.json": "{}\n", "packages/web/package.json": "{}\n" }, (root, seedVault, git) => {
+    const pkg = join(root, "packages", "api");
+    const vault = join(pkg, "MemoValeOS");
+    renameSync(seedVault, vault);
+    fn(root, pkg, vault, git);
+  });
+}
+
+/* Claude Code reads .claude/settings.json only in the folder it is started
+ * in. Installing at the repository root would leave the hook unread for a
+ * session started in the package, so the root is not guessed. */
+test("a vault below the top of its repository is refused until the start folder is named", () => {
+  withMonorepo((root, pkg, vault) => {
+    const before = snapshot(root);
+    const refused = spawnSync(process.execPath, [adoptIn(vault), "--apply", "--local"], { encoding: "utf8", cwd: vault });
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /not at the top of its git repository/);
+    assert.match(refused.stderr, /--project ".*packages[\\/]api"\s+the folder that holds the vault/);
+    assert.deepEqual(snapshot(root), before, "nothing written");
+  });
+});
+
+/* Patterns in .git/info/exclude are anchored at the repository's top. Before
+ * this case was tested they were anchored at the project root, and a package
+ * install left the vault in `git status`. */
+test("--local in a package of a monorepo anchors the exclude at the repository top and leaves git clean", () => {
+  withMonorepo((root, pkg, vault, git) => {
+    const exclude = excludeText(root);
+    const { code, stdout } = run(vault, ["--apply", "--local", "--project", pkg]);
+    assert.equal(code, 0, stdout);
+    assert.equal(git("status", "--porcelain"), "");
+    assert.ok(has(pkg, ".claude/rules/memovaleos.md"), "the rules file is where Claude is started");
+    assert.ok(!has(root, ".claude"));
+    assert.equal(read(root, "CLAUDE.md"), TEAM_RULES);
+    assert.match(excludeText(root), /^\/packages\/api\/MemoValeOS\/$/m);
+    assert.match(excludeText(root), /^\/packages\/api\/\.claude\/rules\/memovaleos\.md$/m);
+    assert.match(stdout, /cd ".*packages[\\/]api"/, "Claude Code's own commands run in the start folder");
+    assert.equal(JSON.parse(read(pkg, "MemoValeOS/.mvos/install.json")).projectRoot, "..");
+
+    /* Started in the package, Claude Code keeps settings.local.json at the
+     * repository root (Linux, macOS). */
+    mkdirSync(join(root, ".claude"));
+    writeFileSync(join(root, ".claude", "settings.local.json"), PLUGIN_ON);
+    assert.equal(run(vault, ["--verify"]).code, 0);
+    const again = run(vault, ["--apply"]);
+    assert.match(again.stdout, /project root from\s+install record/);
+    assert.match(again.stdout, /Nothing to change/);
+
+    assert.equal(run(vault, ["--uninstall", "--apply"]).code, 0);
+    assert.equal(excludeText(root), exclude);
+    assert.ok(!has(pkg, ".claude/rules/memovaleos.md"));
+  });
+});
+
+test("--team in a package of a monorepo writes the package's files and not the repository root's", () => {
+  withMonorepo((root, pkg, vault) => {
+    const { code, stdout } = run(vault, ["--apply", "--team", "--project", pkg]);
+    assert.equal(code, 0, stdout);
+    assert.equal(read(root, "CLAUDE.md"), TEAM_RULES, "the repository's CLAUDE.md is the team's");
+    assert.ok(!has(root, ".claude"));
+    assert.ok(!has(root, ".gitignore"));
+    assert.match(read(pkg, ".claude/settings.json"), /budget-audit\.cjs/, "the hook is where a session started in the package reads settings");
+    assert.match(read(pkg, "CLAUDE.md"), /MemoValeOS\/CLAUDE\.md/);
+    assert.match(read(pkg, ".gitignore"), /^\.claude\/budget\.json$/m);
+  });
+});
+
+/* A Windows checkout with autocrlf has CRLF on disk, in the host's files and
+ * in copies of ours alike. What we add takes the file's line endings, a CRLF
+ * copy is still ours, and an uninstall gives the host back byte for byte. */
+test("a checkout with CRLF line endings keeps them, and an uninstall gives the host back byte for byte", () => {
+  const crlf = (s) => s.replace(/\n/g, "\r\n");
+  const seed = {
+    "CLAUDE.md": crlf("# Host\n\nTheirs.\n"),
+    ".gitignore": crlf("node_modules/\n"),
+    ".claude/settings.json": crlf(THEIR_SETTINGS),
+  };
+  withProject(seed, (root, vault) => {
+    const before = hostSnapshot(root);
+    assert.equal(run(vault, ["--apply", "--team"]).code, 0);
+    for (const f of Object.keys(seed)) assert.doesNotMatch(read(root, f), /(^|[^\r])\n/, `${f} has no bare LF`);
+
+    for (const sub of ["commands", "hooks"]) {
+      for (const n of readdirSync(join(root, ".claude", sub))) {
+        const p = join(root, ".claude", sub, n);
+        writeFileSync(p, crlf(readFileSync(p, "utf8")));
+      }
+    }
+    assert.equal(run(vault, ["--verify"]).code, 0, "a CRLF copy is not drift");
+
+    const { code, stdout } = run(vault, ["--uninstall", "--apply"]);
+    assert.equal(code, 0, stdout);
+    assert.deepEqual(hostSnapshot(root), before);
+  });
+});
+
+/* ------------------------------------------------ another knowledge system */
+
+/* The census names another system's traces and touches none of them. */
+test("the census names another knowledge system and leaves it alone", () => {
+  const docs = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`docs/TASK-${i}/notes.md`, `# Task ${i}\n`]));
+  const seed = { ...docs, "memory-bank/projectbrief.md": "# Brief\n", ".cursor/rules/style.mdc": "rule\n", ".claude/settings.json": THEIR_SETTINGS };
+  withProject(seed, (root, vault) => {
+    const before = hostSnapshot(root);
+    const { stdout } = run(vault, ["--team"]);
+    assert.match(stdout, /other knowledge\s+memory-bank; \.cursor\/rules; docs\/ \(60 markdown files\); 1 hook\(s\) of another tool/);
+    assert.deepEqual(hostSnapshot(root), before);
+  });
+  withProject({}, (root, vault) => {
+    assert.match(run(vault, ["--team"]).stdout, /other knowledge\s+none found/);
+  });
+});
+
+/* ------------------------------------------------ the host's CLAUDE.md, hidden */
+
+/* Once the team's rules are inherited Decisions in the vault, a personal
+ * install can stop their CLAUDE.md loading for this one person. Not before:
+ * hiding it with nothing in the vault would take the rules out of context. */
+test("--exclude-host-claude-md waits for inherited Decisions, then hides the file for this person only", () => {
+  withGitProject({ "CLAUDE.md": TEAM_RULES, "!.claude/settings.local.json": CLAUDE_OWNED }, (root, vault, git) => {
+    const refused = run(vault, ["--apply", "--local", "--exclude-host-claude-md"]);
+    assert.equal(refused.code, 2, refused.stdout);
+    assert.match(refused.stdout, /no Decision in the vault has `origin: inherited`/);
+    assert.equal(read(root, ".claude/settings.local.json"), CLAUDE_OWNED, "nothing hidden yet");
+
+    const decision = join(vault, "Project-OS", "05-Decisions", "Deploy-On-Fridays.md");
+    mkdirSync(dirname(decision), { recursive: true });
+    writeFileSync(decision, '---\ntype: decision\nstatus: proposed\nlifecycle: draft\norigin: inherited\nsource:\n  - path: CLAUDE.md\n    commit: "abc1234"\n---\n# Deploy on Fridays\n');
+    const { code, stdout } = run(vault, ["--apply", "--local", "--exclude-host-claude-md"]);
+    assert.equal(code, 0, stdout);
+    assert.match(stdout, /1 inherited Decision\(s\) carry its rules/);
+    const settings = JSON.parse(read(root, ".claude/settings.local.json"));
+    assert.deepEqual(settings.permissions, JSON.parse(CLAUDE_OWNED).permissions, "Claude Code's own rules are kept");
+    assert.equal(settings.claudeMdExcludes.length, 1);
+    /* Claude Code matches case-sensitively, and the drive letter it sees
+     * depends on what started it: on Windows the letter is written both ways. */
+    assert.match(settings.claudeMdExcludes[0], /^(\/|\{[A-Z],[a-z]\}:\/)[^\\]*\/CLAUDE\.md$/, "the absolute path, forward slashes");
+    assert.equal(read(root, "CLAUDE.md"), TEAM_RULES, "the team's file is untouched");
+    assert.equal(git("status", "--porcelain"), "");
+
+    const again = run(vault, ["--apply"]);
+    assert.equal(again.code, 0, again.stdout);
+    assert.match(again.stdout, /\[host-claude-md\] .*already excluded/, "the record keeps the class in scope");
+
+    assert.equal(run(vault, ["--uninstall", "--apply"]).code, 0);
+    assert.equal(read(root, ".claude/settings.local.json"), CLAUDE_OWNED, "Claude Code's file back byte for byte");
+  });
+});
+
+/* In a team install CLAUDE.md carries the redirect; hiding it hides the OS. */
+test("--exclude-host-claude-md is refused in a team install", () => {
+  withProject({ "CLAUDE.md": "# Host\n" }, (root, vault) => {
+    const r = spawnSync(process.execPath, [adoptIn(vault), "--team", "--exclude-host-claude-md"], { encoding: "utf8", cwd: vault });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /for the personal install/);
+  });
 });
 
 test("nothing is ever staged or committed", () => {

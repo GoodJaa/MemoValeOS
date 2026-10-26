@@ -71,7 +71,8 @@ Produce, from the survey:
 
 - one `Architecture` entity per boundary found;
 - an entry in the project's uncertainty ledger for every question the survey raised and could not answer;
-- `Research` entities only for findings that required investigation beyond reading.
+- `Research` entities only for findings that required investigation beyond reading;
+- the project's Environment note, from `Templates/Environment.md`, at `Project-OS/06-AI/Context/Environment.md`, routed from the AI context index: how to install, test, lint, build and run, which Node and package manager, which services exist and where their credentials live — by name, never by value. The manifests and configuration read in §3 hold most of it. Run each row's command once and record the date: those rows are `L2`; a row only read stays `L1`. These are the only commands a survey runs.
 
 Every entity produced by a survey:
 

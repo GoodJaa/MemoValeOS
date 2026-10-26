@@ -33,17 +33,18 @@
 | `evidenceActionMap` | `{действие: уровень}` | запись уровня через действие | Evidence-Schema | валидатор не читает; читают `/mv-note`, ритуал закрытия в `AI.md` (часть 1 и 2), шаблон Finding (ассистент по тексту) |
 | `evidenceFloorByType` | `{тип: уровень}` | минимум для `active` | Evidence-Schema, раздел Floors | `EVIDENCE_FLOOR` → `below-evidence-floor` |
 | `evidenceAlternativeByType` | `{тип: [значения]}` | значения вне лестницы, удовлетворяющие порогу, — и только для перечисленных типов | Evidence-Schema | `EVIDENCE_ALTERNATIVES` (по умолчанию `{}`) → `evidence-not-allowed-for-type`, `below-evidence-floor`; `ALL_EVIDENCE_VALUES` → `unknown-evidence-level` |
+| `origins` | `{происхождение: {types, evidenceAlternatives, requiredFields, requiredFieldsWhenActive}}` | значения поля `origin`: для каких типов, какую альтернативу порогу дают, каких полей требуют (всегда и при `active`) | Evidence-Schema, «A Decision inherited from the host»; Metadata-Schema | `ORIGINS` (по умолчанию `{}`) → `invalid-metadata-value`, `origin-incomplete`, альтернативы в `evidence-not-allowed-for-type` и `below-evidence-floor` |
 
 ### Как его читает валидатор
 
-`validate-vault.mjs` один раз читает `../Schema/schema.json` относительно собственного расположения (не `cwd`) функцией `loadSchema()` и раскладывает ключи в константы в начале файла. До раскладки схема проверяется: восемь списков (`metadataKeys`, `coreTypes`, `operationalTypes`, `metaTypes`, `lifecycles`, `priorities`, `relationshipTypes`, `evidenceLevels`) — массивы строк; `statusByType`, `evidenceFloorByType` и `activeLifecycleStatuses` — объекты; каждый тип, названный ключом в `statusByType`, `evidenceFloorByType`, `evidenceAlternativeByType` или `activeLifecycleStatuses`, существует; списки статусов непусты; каждый статус в `activeLifecycleStatuses` есть в `statusByType` своего типа; пороги — уровни из `evidenceLevels`. Нарушение — сообщение `Knowledge-OS/Schema/schema.json is invalid: …` в stderr и код выхода `2`. Дальше весь код работает с константами. Отсюда следствие, проверенное тестом QA `SCHEMA-1`: значение, изменённое в `schema.json`, сразу отражается в проверках, без правки кода.
+`validate-vault.mjs` один раз читает `../Schema/schema.json` относительно собственного расположения (не `cwd`) функцией `loadSchema()` и раскладывает ключи в константы в начале файла. До раскладки схема проверяется: восемь списков (`metadataKeys`, `coreTypes`, `operationalTypes`, `metaTypes`, `lifecycles`, `priorities`, `relationshipTypes`, `evidenceLevels`) — массивы строк; `statusByType`, `evidenceFloorByType` и `activeLifecycleStatuses` — объекты; каждый тип, названный ключом в `statusByType`, `evidenceFloorByType`, `evidenceAlternativeByType` или `activeLifecycleStatuses`, существует; списки статусов непусты; каждый статус в `activeLifecycleStatuses` есть в `statusByType` своего типа; пороги — уровни из `evidenceLevels`; у каждого происхождения в `origins` четыре списка строк, его `types` — существующие типы, а требуемые поля есть в `metadataKeys`. Нарушение — сообщение `Knowledge-OS/Schema/schema.json is invalid: …` в stderr и код выхода `2`. Дальше весь код работает с константами. Отсюда следствие, проверенное тестом QA `SCHEMA-1`: значение, изменённое в `schema.json`, сразу отражается в проверках, без правки кода.
 
 Соглашения, которые код предполагает:
 
 - все значения типов — **строчные**; валидатор приводит `type` к нижнему регистру (`typeOf()`) во всех проверках, а `lifecycle`, `status`, `priority`, `evidence` сравнивает как есть;
 - ключи `statusByType`, `evidenceFloorByType`, `evidenceAlternativeByType`, `activeLifecycleStatuses` — те же строчные имена типов;
 - порядок `evidenceLevels` — от слабого к сильному;
-- `evidenceAlternativeByType` единственный необязательный ключ (`?? {}`); отсутствие любого из остальных останавливает прогон через `loadSchema()` с названием ключа. `evidenceActionMap` валидатор не читает и не проверяет.
+- `evidenceAlternativeByType` и `origins` — необязательные ключи (`?? {}`); отсутствие любого из остальных останавливает прогон через `loadSchema()` с названием ключа. `evidenceActionMap` валидатор не читает и не проверяет.
 
 ### Как его читают тесты
 
@@ -74,7 +75,7 @@
 
 **Смысл остаётся в `.md`.** JSON не умеет объяснять, почему `user-provided` — не уровень и почему у `task` есть порог. Разделение «значения / смысл» позволило менять значение без переписывания прозы и наоборот. README говорит прямо: при изменении словаря правьте `schema.json`; `.md` правятся, только когда меняется смысл.
 
-**Расширение схемы в истории.** В апстримном `os-v1` у схемы не было `metadataKeys` и `evidenceActionMap`, а `statusByType` покрывал 10 типов из 16. Локальный дрейф добавил оба ключа и словари для всех типов; позже — `evidenceAlternativeByType` (`os-v2`) и порог `task` (закрытие B4). Каждое добавление шло с фикстурой, и CHANGELOG фиксирует, что оно заставило мигрировать.
+**Расширение схемы в истории.** В апстримном `os-v1` у схемы не было `metadataKeys` и `evidenceActionMap`, а `statusByType` покрывал 10 типов из 16. Локальный дрейф добавил оба ключа и словари для всех типов; позже — `evidenceAlternativeByType` (`os-v2`), порог `task` (закрытие B4) и `origins` с ключами `origin`/`ratified` (2026-10-26, унаследованные правила хоста). Каждое добавление шло с фикстурой, и CHANGELOG фиксирует, что оно заставило мигрировать.
 
 **Двусторонняя сверка — ручная.** Значение в заметке, которого нет в `schema.json`, падает в валидаторе. Значение в `schema.json`, не описанное в `.md`, ничего не роняет — оно только вводит читателя в заблуждение. Knowledge-Maintenance-Protocol §6 требует проверять оба направления руками; автоматической проверки «каждое значение задокументировано» нет.
 

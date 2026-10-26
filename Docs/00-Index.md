@@ -52,6 +52,7 @@
 - [[Docs/06-Tooling/06-6-Tests-and-Fixtures|06-6. Тесты и фикстуры]] — одна фикстура на одно нарушение.
 - [[Docs/06-Tooling/06-7-OS-Check|06-7. os-check]] — определение готовности изменения ОС одной командой, pre-push и CI.
 - [[Docs/06-Tooling/06-8-Launcher|06-8. Лаунчер mv.cjs]] — инструменты на Node хоста: выбор Node ≥ 18, `doctor`, `MVOS_NODE`.
+- [[Docs/06-Tooling/06-9-Task-Import|06-9. Импорт задач из трекера]] — `task-import.mjs`: нейтральный JSON → Task и Epic, `tasks.keying`, идемпотентность по `key`, начатое не перезаписывается.
 
 ### Команды, доставка, интеграция
 - [[Docs/07-Commands|07. Команды]] — каждая `/mv-*`.

@@ -1,6 +1,6 @@
 # 03-4. Доказательность
 
-> **Описывает:** [[Knowledge-OS/Schema/Evidence-Schema]], ключи `evidenceLevels`, `evidenceFloorByType`, `evidenceAlternativeByType`, `evidenceActionMap` в [[Knowledge-OS/Schema/schema.json]], проверки `evidence` в [[Knowledge-OS/Tools/validate-vault.mjs]].
+> **Описывает:** [[Knowledge-OS/Schema/Evidence-Schema]], ключи `evidenceLevels`, `evidenceFloorByType`, `evidenceAlternativeByType`, `origins`, `evidenceActionMap` в [[Knowledge-OS/Schema/schema.json]], проверки `evidence` и `origin` в [[Knowledge-OS/Tools/validate-vault.mjs]].
 > **Связано:** [[Docs/03-Knowledge-Model/03-3-Lifecycle]] — порог как условие `active`, [[Docs/03-Knowledge-Model/03-1-Entity-Types]] — почему метатипы свободны от `evidence`, [[Docs/04-Assistant-Behaviour/04-4-Protocols]] — Survey даёт `L1`, Promotion требует порога, [[Docs/07-Commands]] — `/mv-note` и `/mv-close` проставляют уровень, [[Docs/06-Tooling/06-1-Validator]] — внутреннее устройство.
 
 ## Назначение
@@ -41,13 +41,13 @@
 
 ### Пороги по типу
 
-Минимум для `lifecycle: active` (`evidenceFloorByType` плюс `evidenceAlternativeByType`):
+Минимум для `lifecycle: active` (`evidenceFloorByType` плюс `evidenceAlternativeByType` и `origins`):
 
 | Тип | Порог | Альтернатива | Дополнительно (не проверяется машиной) |
 |---|---|---|---|
 | `research` | `L1` | — | цитируемый источник |
 | `architecture` | `L2` | — | принятие человеком |
-| `decision` | `L2` | — | явное принятие человеком |
+| `decision` | `L2` | `user-provided` — только с `origin: inherited`, `source` и `ratified` | явное принятие человеком |
 | `product` | `L4` | `user-provided` | — |
 | `task` | `L2` | — | — |
 | `resource` | нет | `user-provided` | — |
@@ -62,14 +62,30 @@
 
 Граница: утверждение о том, что код *делает*, никогда не `user-provided`, кто бы его ни сказал. Это наблюдаемо, и слово не делает его правдой.
 
+### Унаследованное правило хоста: `origin: inherited`
+
+У проекта, куда ставится ОС, правила часто уже есть: `CLAUDE.md`, руководство для участников, соглашение, которому все следуют. Оформленные как Decision, они не могли стать текущими. Правило команды вроде «деплой по пятницам» или «никакого сырого SQL в обработчиках» тест не наблюдает, поэтому до `L2` ему не дойти. На первом реальном проекте `CLAUDE.md` хоста разложили в решения вручную, и все 17 решений проекта остались `proposed`. Авторитет такого правила в том, что команда его приняла.
+
+Поэтому Decision может стоять на `user-provided`, если называет своё происхождение. Это решение владельца от 2026-10-25, в схеме — `origins.inherited`:
+
+| Поле | Значение | Когда обязательно |
+|---|---|---|
+| `origin` | `inherited` | — |
+| `source` | список `{path, commit}`: файл хоста и коммит, на котором правило прочитано | всегда (`requiredFields`) |
+| `ratified` | `YYYY-MM-DD`, когда владелец подтвердил правило как правило проекта | при `lifecycle: active` (`requiredFieldsWhenActive`) |
+
+Нет полей — `origin-incomplete`. Взамен `L2` правило связано с файлом хоста: `stale-source` следит за `source`, и когда команда меняет свой `CLAUDE.md`, решение помечается непроверенным, пока владелец не перечитает правило и не обновит `ratified`. Собственные решения проекта сохраняют порог `L2`: `user-provided` доходит до Decision только через это происхождение. Слова владельца «выбор сделан» мало, чтобы показать, что выбор работает.
+
 ### Алгоритм валидатора
 
 Для каждой управляемой заметки (`isGoverned()`), где `type` уже приведён к нижнему регистру:
 
-1. `evidence` задан, но не входит в `ALL_EVIDENCE_VALUES` (все `evidenceLevels` плюс все альтернативы всех типов) → `unknown-evidence-level`.
-2. Иначе, если `evidence` — не уровень, а альтернатива, и тип заметки не входит в те ключи `evidenceAlternativeByType`, что её перечисляют, → `evidence-not-allowed-for-type` с сообщением «evidence `user-provided` is accepted only for product, resource, not for `finding`». Проверка не зависит от `lifecycle`: `draft`-заметка тоже не может ссылаться на авторитет владельца там, где схема его не даёт.
-3. `lifecycle: active`, `evidence` отсутствует, тип не метатип → `missing-evidence-for-active`.
-4. `lifecycle: active`, у типа есть порог, `evidence` задан и не входит в альтернативы этого типа → сравнить индексы в `evidenceLevels`: если индекс `evidence` меньше индекса порога → `below-evidence-floor` с сообщением «requires L4 or user-provided to be active, found L1».
+0. Задан `origin`: значения нет в `origins` или тип заметки не входит в его `types` → `invalid-metadata-value`, и происхождение ничего не даёт. Иначе его `evidenceAlternatives` добавляются к альтернативам типа для этой заметки.
+1. `evidence` задан, но не входит в `ALL_EVIDENCE_VALUES` (все `evidenceLevels` плюс все альтернативы всех типов и всех происхождений) → `unknown-evidence-level`.
+2. Иначе, если `evidence` — не уровень, а альтернатива, и ни тип заметки, ни её `origin` её не разрешают, → `evidence-not-allowed-for-type` с сообщением «evidence `user-provided` is accepted only for product, resource, decision with `origin: inherited`, not for `finding`». Проверка не зависит от `lifecycle`: `draft`-заметка тоже не может ссылаться на авторитет владельца там, где схема его не даёт.
+3. Происхождение допустимо, но нет его `requiredFields` или, при `lifecycle: active`, его `requiredFieldsWhenActive` → `origin-incomplete`. `source` засчитывается только списком с хотя бы одной парой `{path, commit}`: строку `stale-source` пропускает молча, и за такой цитатой никто бы не следил.
+4. `lifecycle: active`, `evidence` отсутствует, тип не метатип → `missing-evidence-for-active`.
+5. `lifecycle: active`, у типа есть порог, `evidence` задан и не входит в альтернативы этой заметки → сравнить индексы в `evidenceLevels`: если индекс `evidence` меньше индекса порога → `below-evidence-floor` с сообщением «requires L4 or user-provided to be active, found L1».
 
 Сравнение — по позиции в массиве. Поэтому порядок `["L1", "L2", "L3", "L4"]` в `schema.json` несёт смысл. Значение, которого нет на лестнице (например, `user-provided` у `architecture`), получает индекс `-1` и всегда ниже порога — так и работает фикстура `user-provided-not-allowed-for-architecture`. Активная архитектура с `user-provided` получает теперь две ошибки: `evidence-not-allowed-for-type` (значение не для этого типа) и `below-evidence-floor` (порог не достигнут).
 
@@ -125,11 +141,30 @@ evidence: user-provided
 
 Попытка сделать шаг 3 без шага 2 даст `below-evidence-floor`.
 
+Правило команды из `CLAUDE.md` хоста, подтверждённое владельцем, проходит (фикстура `inherited-decision`):
+
+```yaml
+---
+type: decision
+status: accepted
+lifecycle: active
+evidence: user-provided
+origin: inherited
+source:
+  - path: CLAUDE.md
+    commit: "4f2a9c1"
+ratified: 2026-10-26
+---
+```
+
+Без `source` и `ratified` то же решение не проходит (фикстура `origin-incomplete`). Без `origin` — тоже: `evidence-not-allowed-for-type` (фикстура `user-provided-not-allowed-for-decision`).
+
 ## Подводные камни
 
 - **Раньше `user-provided` проходил на любом типе без порога.** `ALL_EVIDENCE_VALUES` — общий список для всех типов, а порог проверяется только там, где он есть, так что `evidence: user-provided` на `finding`, `epic` или `idea` был валиден, а запись `evidenceAlternativeByType.resource` ничего не меняла. Теперь альтернатива проверяется по типу (`evidence-not-allowed-for-type`, одноимённая фикстура), и запись для `resource` — правило, а не документация намерения.
 - **Провайдер контекста держит свою копию.** `context-provider.mjs` принимает `user-provided` только для кандидатов `intent` (тип `product`) по собственной таблице `EVIDENCE_ALTERNATIVES`, а не читает `schema.json` — см. [[Docs/06-Tooling/06-5-Context-Provider]].
-- **Принятие человеком для Decision и Architecture не проверяется.** Валидатор видит только `L2`.
+- **Принятие человеком для Decision и Architecture не проверяется.** Валидатор видит только `L2`, а у унаследованного решения — что `ratified` стоит и имеет вид даты. Что владелец действительно подтверждал, машина не знает.
+- **Провайдер контекста не знает `origins`.** Его таблица `EVIDENCE_ALTERNATIVES` разрешает `user-provided` только для `intent`. Унаследованное решение через провайдер не предлагается: его заводят при развёртывании, по [[Knowledge-OS/Protocols/Deployment-Protocol]], §7.
 - **Статусы `verified`/`inferred`/`unknown` не проверяются ничем.** Условие «нет `inferred`» перед повышением — дисциплина.
 - **Порядок `evidenceLevels` значим.** Перестановка или вставка уровня в середину меняет результат всех сравнений с порогом.
 
@@ -138,4 +173,5 @@ evidence: user-provided
 - **Новый порог** — строка в `evidenceFloorByType` в [[Knowledge-OS/Schema/schema.json]] и строка в разделе Floors [[Knowledge-OS/Schema/Evidence-Schema]]. Проверьте, какие `active`-заметки этого типа окажутся ниже: это миграция, её нужно назвать в [[CHANGELOG]].
 - **Новая альтернатива** — в `evidenceAlternativeByType` под каждым типом, которому она разрешена; остальным типам валидатор её не даст (`evidence-not-allowed-for-type`). `loadSchema()` проверяет, что каждый названный там тип существует. Если альтернатива должна приходить и через провайдер — `EVIDENCE_ALTERNATIVES` в `context-provider.mjs`.
 - **Новый уровень** — вставка в `evidenceLevels` с осознанием, что позиция задаёт сравнение; новая строка в `evidenceActionMap`, если у уровня есть действие; обновить `/mv-note` (вопрос по действиям) в обеих копиях, [[Project-OS/Templates/Finding]] (комментарий со списком действий).
-- Тест: фикстура с одним нарушением на новое значение и фикстура, где оно законно (образец — пара `product-user-provided-evidence` / `user-provided-not-allowed-for-architecture`), см. [[Docs/06-Tooling/06-6-Tests-and-Fixtures]].
+- **Новое происхождение** — запись в `origins`: `types`, `evidenceAlternatives`, `requiredFields`, `requiredFieldsWhenActive`. `loadSchema()` проверяет, что названные типы и поля существуют; поле должно сначала войти в `metadataKeys`. Описать в [[Knowledge-OS/Schema/Metadata-Schema]] (`origin`) и, если происхождение даёт альтернативу, в [[Knowledge-OS/Schema/Evidence-Schema]].
+- Тест: фикстура с одним нарушением на новое значение и фикстура, где оно законно (образец — пара `product-user-provided-evidence` / `user-provided-not-allowed-for-architecture`, для происхождения — `inherited-decision` / `origin-incomplete`), см. [[Docs/06-Tooling/06-6-Tests-and-Fixtures]].

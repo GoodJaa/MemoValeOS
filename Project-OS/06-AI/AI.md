@@ -55,7 +55,7 @@ Then ask the human, in one message: for each proposed Finding, which was done �
 
 **Part 3 — refresh Current Context, always.**
 
-1. Re-run the lookup `/mv-resume` and [[Project-OS/03-Development/Development]] use — `Grep("^status: (todo|in-progress|blocked|review)", path="Project-OS/03-Development/Tasks")` — for the lowest-numbered open Task and its Epic.
+1. Re-run the lookup `/mv-resume` and [[Project-OS/03-Development/Development]] use — `Grep("^status: (todo|in-progress|blocked|review)", path="Project-OS/03-Development/Tasks")` — for the next open Task and its Epic. Which one is next comes from `tasks.next` in `mvos.config.json`: `lowest-number` (the default, and what `tasks.keying: sequence` implies) takes the lowest-numbered match; `explicit` (what `tasks.keying: external` implies) keeps the Task Current Context names while it is still open, and otherwise asks the owner which — Tasks named by a tracker's keys carry no order, so do not pick one.
 2. Rewrite `Current Epic`, `Current Task` and `Current Goal` in [[Current-Context]] to match that lookup.
 3. Rewrite `Relevant Code` only if this session changed what has real behaviour; leave `Required Architecture`, `Relevant Decisions` and `Relevant Research` unless this session changed them.
 4. Re-run the lookup even if nothing seems to have changed.

@@ -39,6 +39,8 @@ Create the initial `Epic` or `Task` only when there is defined work to perform.
 
 A Task must have a clear scope and expected result.
 
+Once the project can be run at all, start its Environment note from `Templates/Environment.md` at `Project-OS/06-AI/Context/Environment.md`, routed from the AI context index: the commands that install, test and run it, each checked by running it, with the date. A new project has few rows; they are added when the first Task needs them, not invented ahead of it.
+
 ## 4. Record Existing Knowledge
 
 During initialization, capture only verified project-specific knowledge.

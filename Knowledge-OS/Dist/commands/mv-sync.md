@@ -15,6 +15,8 @@ Both working trees must be clean apart from untracked files, and the OS-layer wo
 
 Find the previous delivery: the newest `os-vN` tag in this project (`git tag -l "os-v*"`). It marks this project's commit whose OS layer upstream already has, and it is the base of the patch. If there is none, stop and ask — guessing a base produces a patch against content upstream does not hold.
 
+A copy installed from upstream has no such tag, and often no history at all. If the owner confirms that is what this is, build the patch in Step 1 with `os-patch --against <upstream clone> --out <path>` instead: the base is upstream at the copy's `.os-version` (or `--base os-vN`), and the patch is that version against the copy's files on disk — uncommitted ones included, so read the path list with that in mind. Steps 2–5 are the same, and in Step 5 there is no commit of this copy to tag.
+
 **Step 1 — build the patch, in this project.**
 
 ```

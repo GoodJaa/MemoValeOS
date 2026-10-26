@@ -34,8 +34,10 @@ updated: {{date}}
 | Шаблон | `type` | `status` | `lifecycle` | Разделы тела |
 |---|---|---|---|---|
 | `Architecture.md` | `architecture` | — (поля нет) | `draft` | Purpose, Responsibility, Structure, Dependencies, Constraints, Related |
-| `Decision.md` | `decision` | `proposed` | `draft` | Status (с текстом `Proposed`), Context, Problem, Options, Decision, Consequences, Alternatives Rejected, Related |
+| `Decision.md` | `decision` | `proposed` | `draft` | Status (с текстом `Proposed`), Context, Problem, Options, Decision, Consequences, Alternatives Rejected, Related. Над Status — комментарий: какие поля (`origin: inherited`, `source`, `ratified`) добавить, если решение — правило, унаследованное от хоста |
+| `Environment.md` | `resource` | `active` | `draft` | Runtime, Commands, Services and Access — таблицы, где у каждой строки дата и команда проверки; Related. Заголовок постоянный, `Environment`: заметка у проекта одна, `06-AI/Context/Environment.md` |
 | `Epic.md` | `epic` | `planned` | `draft` | Goal, Why, Scope, Tasks, Dependencies, Architecture, Decisions, Related |
+| `External-Corpus.md` | `resource` | `active` | `draft` | What It Is, Location, Scope, Who Writes It, How Current It Is, What Is Lifted Into the Vault, Related. Для знания проекта вне хранилища (`docs/`, вики, чужая система): ссылаться, а не копировать |
 | `Finding.md` | `finding` | `active` | **`active`** | без заголовка и разделов: строка `{{title}}` и HTML-комментарий |
 | `Idea.md` | `idea` | `inbox` | `draft` | Problem, Idea, Value, Risks, Possible Implementation, Related |
 | `Log.md` | `log` | `active` | `draft` | Date, Work, Discoveries, Problems, Decisions, Next |

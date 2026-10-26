@@ -236,6 +236,8 @@ const CASES = [
   ["docs-link-outside-os-layer", "docs-link-outside-os-layer"],
   ["undocumented-os-file", "undocumented-os-file"],
   ["invalid-config", "invalid-config"],
+  ["origin-incomplete", "origin-incomplete"],
+  ["user-provided-not-allowed-for-decision", "evidence-not-allowed-for-type"],
 ];
 
 for (const [fixture, rule] of CASES) {
@@ -460,8 +462,8 @@ test("os-layer-manifest-complete fixture triggers no false positive", () => {
 
 /* Substitute the seeded commit into the fixture note's `source`, so the note
  * cites a hash that actually exists in the throwaway repository. */
-function stampCommit(vault, commit) {
-  const note = join(vault, "Project-OS", "Parser-Note.md");
+function stampCommit(vault, commit, name = "Parser-Note.md") {
+  const note = join(vault, "Project-OS", name);
   /* Quoted: a short SHA that happens to be all digits is parsed by YAML as a
    * number, and the rule then compares a number against a commit string and
    * fails for reasons having nothing to do with staleness. Came back from
@@ -531,6 +533,47 @@ test("user-provided satisfies the Product evidence floor", () => {
   const report = runFixture("product-user-provided-evidence");
   assert.deepEqual(report.errors, []);
   assert.deepEqual(report.warnings, []);
+});
+
+/* A host team's rule, filed as a Decision: accepted on the owner's
+ * ratification rather than on L2, because nothing about a team's rule can be
+ * observed running (owner's decision, 2026-10-25). The fixture cites the
+ * host's CLAUDE.md at a real commit, so `stale-source` has something to watch
+ * and stays silent while the file is unchanged. */
+test("an inherited Decision with source and ratified is accepted on user-provided", () => {
+  const report = runFixture("inherited-decision", (vault) => {
+    const commit = withGitHistory(vault, [{ path: "CLAUDE.md", content: "# Team rules\n\nDeploy on Fridays, never Thursdays.\n" }], []);
+    stampCommit(vault, commit, "Host-Rule.md");
+  });
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings, []);
+});
+
+/* The team edits its CLAUDE.md after the rule was ratified: the inherited
+ * Decision is reported unverified, which is the prompt to ratify it again. */
+test("an inherited Decision is reported stale when the host's file moves", () => {
+  const report = runFixture("inherited-decision", (vault) => {
+    const commit = withGitHistory(
+      vault,
+      [{ path: "CLAUDE.md", content: "# Team rules\n\nDeploy on Fridays, never Thursdays.\n" }],
+      [{ path: "CLAUDE.md", content: "# Team rules\n\nDeploy on Wednesdays.\n" }]
+    );
+    stampCommit(vault, commit, "Host-Rule.md");
+  });
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings.map((w) => w.rule), ["stale-source"]);
+});
+
+/* An origin grants something only where the schema defines it. */
+test("an unknown origin, or an origin on a type it is not defined for, is refused", () => {
+  const report = runFixture("origin-incomplete", (vault) => {
+    const note = (name, fm) => writeFileSync(join(vault, "Project-OS", name), `---\n${fm}\n---\n# ${name}\n\nBody text so the note is not a scaffold.\n`);
+    note("Copied.md", "type: decision\nstatus: proposed\nlifecycle: draft\norigin: copied");
+    note("Inherited-Idea.md", "type: idea\nstatus: inbox\nlifecycle: draft\norigin: inherited");
+  });
+  const messages = report.errors.filter((e) => e.rule === "invalid-metadata-value").map((e) => e.message);
+  assert.ok(messages.some((m) => /`origin` is `copied`, expected one of: inherited/.test(m)), messages.join("\n"));
+  assert.ok(messages.some((m) => /`origin: inherited` is defined for decision, not for `idea`/.test(m)), messages.join("\n"));
 });
 
 /* orphaned-note must be a warning, never an error. On a real vault it fires on
@@ -690,6 +733,34 @@ test("config-clean fixture triggers no false positive", () => {
   assert.deepEqual(report.warnings, []);
 });
 
+/* Tasks keyed by a tracker: the key is the only thing that finds the ticket
+ * again, so one that does not look like the tracker's is reported, and so is
+ * an imported Task without one. */
+test("an imported Task needs a key, as a string, shaped like tasks.keyPattern", () => {
+  const report = runFixture("config-clean", (vault) => {
+    mkdirSync(join(vault, "Project-OS", "Tasks"), { recursive: true });
+    const task = (name, keyLine) =>
+      writeFileSync(join(vault, "Project-OS", "Tasks", name), `---\ntype: task\nstatus: todo\nlifecycle: draft\norigin: imported\n${keyLine}---\n# ${name}\n\nImported from a tracker.\n`);
+    task("PRJ-1.md", 'key: "PRJ-1"\n');
+    task("Typo.md", 'key: "prj1"\n');
+    task("Number.md", "key: 1234\n");
+    task("No-Key.md", "");
+  });
+  const errs = report.errors.map((e) => `${e.file.split(/[\\/]/).pop()} ${e.rule} ${e.message}`);
+  assert.ok(errs.some((e) => /^Typo\.md invalid-metadata-value .*does not match `tasks\.keyPattern`/.test(e)), errs.join("\n"));
+  assert.ok(errs.some((e) => /^Number\.md invalid-metadata-value .*as a string/.test(e)), errs.join("\n"));
+  assert.ok(errs.some((e) => /^No-Key\.md origin-incomplete .*`key`/.test(e)), errs.join("\n"));
+  assert.ok(!errs.some((e) => e.startsWith("PRJ-1.md")), errs.join("\n"));
+});
+
+test("a tasks setting outside its vocabulary is invalid-config, with the vocabulary named", () => {
+  const report = runFixture("config-clean", (vault) => {
+    writeFileSync(join(vault, "mvos.config.json"), JSON.stringify({ format: 1, tasks: { keying: "jira" } }));
+  });
+  const msg = report.errors.filter((e) => e.rule === "invalid-config").map((e) => e.message).join("\n");
+  assert.match(msg, /`tasks` is .*"keying": "sequence" \| "external"/);
+});
+
 test("undocumented-os-file-clean fixture triggers no false positive", () => {
   const report = runFixture("undocumented-os-file-clean");
   assert.deepEqual(report.errors, []);
@@ -736,6 +807,7 @@ test("every fixture directory under __fixtures__ is covered by a case", () => {
     "docs-link-inside-os-layer",
     "undocumented-os-file-clean",
     "config-clean",
+    "inherited-decision",
   ]);
   const present = readdirSync(FIXTURES).filter((f) => statSync(join(FIXTURES, f)).isDirectory());
   const uncovered = present.filter((f) => !covered.has(f));

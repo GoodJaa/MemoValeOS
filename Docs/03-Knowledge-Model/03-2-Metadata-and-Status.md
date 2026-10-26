@@ -26,6 +26,9 @@ Frontmatter заметки — это её машиночитаемая карт
 | `updated` | нет | `YYYY-MM-DD` | `invalid-metadata-value` (форма, не правдоподобие) |
 | `stale` | нет | `true` / `false` | `invalid-metadata-value`, если не булево (само поле вытеснено `source`) |
 | `source` | нет | список `{path, commit}` | `stale-source` (предупреждение, только для `active`) |
+| `origin` | нет | ключи `origins`: `inherited` — для `decision`, `imported` — для `task` и `epic` | `invalid-metadata-value` (неизвестное значение или чужой тип), `origin-incomplete` (нет обязательных полей); `inherited` даёт заметке альтернативу порогу ([[Docs/03-Knowledge-Model/03-4-Evidence]]) |
+| `key` | при `origin: imported` | строка — ключ элемента во внешнем трекере | `invalid-metadata-value` (не строка; не соответствует `tasks.keyPattern` из `mvos.config.json`), `origin-incomplete` (нет у импортированной заметки); [[Docs/06-Tooling/06-9-Task-Import]] |
+| `ratified` | при `origin: inherited` и `lifecycle: active` | `YYYY-MM-DD` | `invalid-metadata-value` (форма), `origin-incomplete` (нет) |
 
 ### Статус по типу
 

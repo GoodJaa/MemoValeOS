@@ -37,7 +37,7 @@ Minimum evidence required before knowledge is treated as current:
 
 - `Research` — `L1` with a cited source.
 - `Architecture` — `L2`.
-- `Decision` — `L2` and explicit acceptance by the human owner.
+- `Decision` — `L2` and explicit acceptance by the human owner; a rule inherited from the host, `user-provided` with its source and ratification date (below).
 - `Product` — `user-provided` or `L4`.
 
 `user-provided` is the one value of `evidence` that is not a level. The L1–L4 ladder grades how directly a claim was observed in the running system; `user-provided` says the claim is the owner's to make, and no amount of reading code can establish or refute it — what a product is *for* is not discoverable from its source. Ranking it against the levels would be a category error, so it is not in `evidenceLevels`; `evidenceAlternativeByType` in `schema.json` records it as satisfying the Product floor instead, and `validate-vault.mjs` accepts it there in place of `L4`.
@@ -45,6 +45,18 @@ Minimum evidence required before knowledge is treated as current:
 `Resource` takes it on the same grounds: a note recording where knowledge came from, or what an external document was, rests on the owner's account of it — and in this vault the source documents were removed once imported, so no citation could be checked even in principle.
 
 Use it only where that is literally true: a statement of intent, scope, audience or provenance made by the owner. A claim about what the code *does* is never `user-provided`, whoever said it — that is observable, and saying so does not make it true.
+
+### A Decision inherited from the host
+
+A project the OS is installed into often has rules already: a `CLAUDE.md`, a contributing guide, a convention everyone follows. Filed as Decisions, they could never become current: a team's rule — "deploy on Fridays", "no raw SQL in handlers" — is not something a test observes, so it cannot reach `L2`, and on the first real installation every one of them stayed `proposed`. Its authority is that the team adopted it.
+
+So a Decision may stand on `user-provided` when it says where it came from (`origins.inherited` in `schema.json`; owner's decision, 2026-10-25):
+
+- `origin: inherited` — the rule existed in the host before the OS did;
+- `source` — the host file and the commit it was read at, as a list of `{path, commit}`. `stale-source` then watches it: when the team changes that file, the Decision is reported unverified until it is ratified again;
+- `ratified` — the date the owner confirmed it as the project's rule. Required once the Decision is `active`.
+
+`origin-incomplete` refuses an inherited Decision without them. The project's own Decisions keep the `L2` floor: `user-provided` reaches a Decision only through this origin, and an owner saying a choice was made does not show that it holds.
 
 Rules:
 

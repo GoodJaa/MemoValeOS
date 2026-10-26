@@ -20,6 +20,8 @@ When the vault is itself the git toplevel and nothing above it is a repository, 
 
 When the vault is its own git repository *inside* another one, the root is ambiguous, and `adopt.mjs` refuses until it is named: `--project <dir>` for an install into that project, `--standalone` for a vault that is the project. Relay the refusal and ask; do not pick one. The first real installation took the vault for the project here and deployed into a folder Claude Code never reads.
 
+The project root is the folder Claude Code is started in. When the vault sits below the top of its repository — a package of a monorepo — `adopt.mjs` refuses in the same way and offers both the repository root and the vault's folder: Claude Code reads `.claude/settings.json`, and with it the budget hook, only in the folder it is started in, and a session started in a package sees only that package. Ask the human where they start Claude; the answer is the `--project`.
+
 Every apply writes the install record: the project root, the mode, each deployed file with its hash. From then on the root is not guessed again — by the deployment, the validator or `stale-check`.
 
 If either root is ambiguous, ask. Do not infer one from the other.
@@ -34,7 +36,8 @@ Report what the target already has, as fact, before naming a single change:
 - `.claude/settings.json` — absent, valid JSON, or unparseable;
 - where the project root came from, the install record, and whether the vault has its own `.git`;
 - whether `CLAUDE.md` is tracked by git — a tracked one is shared with everyone who clones the project, and a personal install must not rewrite it;
-- `CLAUDE.local.md`, `AGENTS.md`, `.claude/settings.local.json`, `.claude/skills/`, `.claude/rules/` — what the project already configures for its assistant.
+- `CLAUDE.local.md`, `AGENTS.md`, `.claude/settings.local.json`, `.claude/skills/`, `.claude/rules/` — what the project already configures for its assistant;
+- another knowledge system — `adopt.mjs` names the signs it finds (a memory bank, another tool's rules folder, hooks in `settings.json` that are not ours, a large `docs/` tree); §10 says what to do about one.
 
 A census is not a formality. The whole difference between installing into an empty directory and installing into somebody's working project is what this step finds.
 
@@ -84,7 +87,9 @@ The redirect is prepended between explicit markers, the original body stays wher
 
 Distribution stops there for the tool. Deciding which of those instructions is a Decision, which is Architecture, and which is project convention is judgement. Propose it as a numbered list and apply nothing without per-item approval. An instruction whose home is unclear stays in the Inbox: an unfiled note is honest, and a misfiled one is a false claim about what the project decided.
 
-A personal install does not touch the project's `CLAUDE.md` at all; it goes on loading beside the rules file. Its instructions can be distributed the same way when the owner wants them in the vault.
+A rule the team already follows becomes a Decision with `origin: inherited` and `source` naming the host file and the commit it was read at — `status: proposed`, `lifecycle: draft` until the owner confirms it is the project's rule. Confirmation is one edit: `status: accepted`, `lifecycle: active`, `evidence: user-provided`, `ratified: <date>`. It needs no `L2`: the rule's authority is that the team adopted it, which nothing running can show ([[Schema/Evidence-Schema]], "A Decision inherited from the host"). From then on `stale-source` reports the Decision whenever the team changes that file, which is the prompt to read the rule again and re-ratify it.
+
+A personal install does not touch the project's `CLAUDE.md` at all; it goes on loading beside the rules file. Its instructions can be distributed the same way when the owner wants them in the vault. Once they are — inherited Decisions citing that file — the owner can stop it loading in their own sessions with `adopt.mjs --apply --local --exclude-host-claude-md`, which adds one `claudeMdExcludes` entry to `.claude/settings.local.json`. The tool refuses while no inherited Decision cites the file: hiding it then would take the team's rules out of context with nothing in their place. Offer it; do not apply it — like every apply, it is the owner's command.
 
 ## 8. Uninstall
 
@@ -106,6 +111,16 @@ A host project's own markdown is not this vault's to judge, and the validator no
 
 `.mvignore` exists for what ownership rules cannot anticipate: a generated directory, a tree kept somewhere unusual. It may never exclude the OS layer, and a line in it that matches nothing is reported, because a stale suppression is how these files stop describing the tree they claim to describe.
 
-## 10. Boundary
+## 10. Another Knowledge System Already Here
+
+A project often has knowledge somewhere else already: a `docs/` tree, a wiki, a memory bank, another assistant's rules, skills and hooks, another knowledge system with its own commands. On the first real installation it was all of these at once — a tool that wrote task folders into `docs/`, ~3500 files of them, with its own hook and skills.
+
+1. **Do not delete it, and do not switch it off.** It is the team's. Removing another system's files, hooks or settings is the owner's decision, made explicitly; propose it if it conflicts, never do it in passing. A hook removed from settings while its file stays, or the other way round, breaks every session.
+2. **Name it in the vault.** One Resource from `Templates/External-Corpus.md` per body of knowledge: what it is, where, what it covers and how large it is, who writes it and with what, how current it is.
+3. **Say whose instructions govern what.** By default the vault's protocols govern what is written into the vault, and the other system's instructions keep governing its own files. Where the two give conflicting instructions for the same act — where a task is recorded, which rule wins — ask the owner, and record the answer as a Decision rather than resolving it silently each session.
+4. **Link, do not copy. Lift what outlives the task.** The corpus stays where it is and is linked. What outlives a single task — a decision, a boundary, a convention — is written into the vault as its own entity, citing the corpus file in `source`, so `stale-source` reports it when that file changes. Two copies of the same document drift, and the one in the vault would look authoritative.
+5. **Keep the validator off it.** The validator judges only what the vault owns, so a foreign tree outside the vault is not checked. If the other system's markdown has to live inside the vault folder, exclude it with `.mvignore` — never the OS layer.
+
+## 11. Boundary
 
 This protocol ends when the files are in place, `--verify` and the validator have been run, and — for a personal install — git has nothing to report. What the project knows is the next question, and a different protocol answers it.

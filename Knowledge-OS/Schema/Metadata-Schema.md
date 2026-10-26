@@ -3,7 +3,7 @@ type: schema
 status: active
 lifecycle: active
 created: 2026-08-24
-updated: 2026-10-13
+updated: 2026-10-26
 ---
 # Metadata Schema
 
@@ -25,6 +25,13 @@ Metadata provides machine-readable identity, lifecycle, state and ordering for k
 - `source` — list of `{path, commit}` pairs identifying the repository evidence a statement rests on, as of the commit where that evidence was established. Optional; use when a statement should be checkable against a specific code state rather than "the repository" in general.
 
   This is what makes staleness answerable rather than asserted: `git log <commit>..HEAD -- <path>` says whether the cited evidence has moved. `validate-vault.mjs`'s `stale-source` rule reports it as a **warning** on `active` notes, and `Tools/stale-check.mjs` asks the same question in detail, naming the commits. Stale evidence does not make a note wrong — it makes it unverified, which is why neither fails the build. A draft is not checked: it states nothing the vault is standing behind yet.
+- `origin` — where the knowledge came from, when that changes what it needs. Values and what each requires live in `origins` in `Schema/schema.json`:
+  - `inherited`, for a Decision that was the host project's rule before the OS was installed: it may stand on `evidence: user-provided`, and in return requires `source` and, once active, `ratified` ([[Evidence-Schema]], "A Decision inherited from the host");
+  - `imported`, for a Task or Epic brought in from an external tracker by `Tools/task-import.mjs`: it requires `key`, and grants no evidence — an imported Task is `draft` until its work is done.
+
+  An unknown value, or one on a type it is not defined for, is refused (`invalid-metadata-value`); missing fields are `origin-incomplete`.
+- `key` — the item's key in an external tracker (`PRJ-101`), a string; quote one that is all digits. It is how an import finds the Task again and how `/mv-resume <key>` finds it at all. When `mvos.config.json` sets `tasks.keyPattern`, a key that does not match it is refused (`invalid-metadata-value`).
+- `ratified` — `YYYY-MM-DD`, the date the owner confirmed an inherited rule as the project's. Set it again when `stale-source` reports the host's file moved and the owner has re-read the rule.
 
 ## Lifecycle
 

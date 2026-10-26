@@ -1,5 +1,10 @@
 {
   "format": 1,
   "language": "pt-BR",
-  "notes": "split"
+  "notes": "split",
+  "tasks": {
+    "keying": "external",
+    "keyPattern": "^[A-Z][A-Z0-9]*-\\d+$",
+    "next": "explicit"
+  }
 }

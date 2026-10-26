@@ -8,7 +8,10 @@
     "created",
     "updated",
     "stale",
-    "source"
+    "source",
+    "origin",
+    "ratified",
+    "key"
   ],
   "coreTypes": [
     "product",
@@ -155,5 +158,32 @@
     "resource": [
       "user-provided"
     ]
+  },
+  "origins": {
+    "inherited": {
+      "types": [
+        "decision"
+      ],
+      "evidenceAlternatives": [
+        "user-provided"
+      ],
+      "requiredFields": [
+        "source"
+      ],
+      "requiredFieldsWhenActive": [
+        "ratified"
+      ]
+    },
+    "imported": {
+      "types": [
+        "task",
+        "epic"
+      ],
+      "evidenceAlternatives": [],
+      "requiredFields": [
+        "key"
+      ],
+      "requiredFieldsWhenActive": []
+    }
   }
 }

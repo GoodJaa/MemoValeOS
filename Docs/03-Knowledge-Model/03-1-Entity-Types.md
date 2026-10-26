@@ -36,7 +36,7 @@
 | `epic` | core | связный результат разработки | `planned` / `draft` | нет |
 | `task` | core | единица работы | `todo` / `draft` | `L2` |
 | `research` | core | техническая или продуктовая находка | `open` / `draft` | `L1` с цитируемым источником |
-| `decision` | core | явно принятый выбор или ограничение | `proposed` / `draft` | `L2` + явное принятие человеком |
+| `decision` | core | явно принятый выбор или ограничение | `proposed` / `draft` | `L2` + явное принятие человеком; правило, унаследованное от хоста, — `user-provided` с `origin: inherited`, `source` и `ratified` |
 | `idea` | core | возможная будущая возможность | `inbox` / `draft` | нет |
 | `prompt` | operational | переиспользуемая инструкция для ИИ | `active` / `draft` | нет |
 | `log` | operational | временная или историческая запись о работе | `active` / `draft` | нет |

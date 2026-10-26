@@ -198,7 +198,7 @@ node "Knowledge-OS/Tools/os-share.mjs" [--since YYYY-MM-DD] [--json]
 
 ```text
 Session ad79c9d1-abca-42e7-9d30-2102f93b8145
-  slug        g--Projects-Archi
+  slug        c--work-project
   span        2026-10-01T12:29:08.188Z → 2026-10-01T12:40:15.835Z  (0.2 h)
   models      claude-opus-5-5
   requests    57   (113 raw records, deduped by message.id)

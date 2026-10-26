@@ -152,6 +152,92 @@ test("the patch applies three-way to a standalone copy that keeps its own Projec
   }
 });
 
+/* ------------------------------------------------- a copy without history */
+
+/* Upstream tagged at the copy's version, then moved on. */
+function upstreamMovedOn() {
+  const upstream = makeRepo("mv-patch-up-");
+  for (const [p, c] of Object.entries(BASE)) upstream.write(p, c);
+  upstream.write("README.md", "upstream's own README\n");
+  commitAll(upstream.git, "os-v1");
+  upstream.git("tag", "os-v1");
+  upstream.write("Knowledge-OS/Rules/Upstream-Only.md", "added upstream after os-v1\n");
+  upstream.write("Knowledge-OS/Old.base", "views: [later]\n");
+  commitAll(upstream.git, "after os-v1");
+  return upstream;
+}
+
+/* A copy installed at os-v1 with no git at all — the vault's .git deleted, as
+ * on the first real installation — and changed on disk, on Windows with CRLF. */
+function copyWithoutHistory(version = "os-v1\n") {
+  const root = mkdtempSync(join(tmpdir(), "mv-patch-copy-"));
+  const write = (rel, content) => {
+    const p = join(root, rel.split("/").join(sep));
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, content);
+  };
+  for (const [p, c] of Object.entries(BASE)) write(p, c);
+  if (version !== null) write(".os-version", version);
+  write("Knowledge-OS/Rules/Rule.md", "rule v2 from the copy\r\n");
+  write("Knowledge-OS/Rules/New.md", "a rule the copy added\n");
+  rmSync(join(root, "Knowledge-OS", "Rules", "Gone.md"));
+  write("Knowledge-OS/Rules/Rule.md.mvos-new", "left by an upgrade conflict\n");
+  write("Project-OS/Tasks/T01.md", "the copy's own task\n");
+  mkdirSync(join(root, "Knowledge-OS", "Tools"), { recursive: true });
+  for (const f of ["os-patch.mjs", "manifest.mjs"]) cpSync(join(HERE, f), join(root, "Knowledge-OS", "Tools", f));
+  return root;
+}
+
+function runAgainst(copy, args) {
+  try {
+    const stderr = execFileSync(process.execPath, [join(copy, "Knowledge-OS", "Tools", "os-patch.mjs"), ...args], { cwd: copy, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return { status: 0, stderr };
+  } catch (e) {
+    return { status: e.status, stderr: e.stderr };
+  }
+}
+
+test("--against: a copy with no history delivers its own changes, and upstream keeps what came after", () => {
+  const upstream = upstreamMovedOn();
+  const copy = copyWithoutHistory();
+  const out = join(copy, "os.patch");
+  try {
+    const r = runAgainst(copy, ["--against", upstream.root, "--out", out]);
+    assert.equal(r.status, 0, r.stderr);
+    const patch = readFileSync(out, "utf8");
+    assert.doesNotMatch(patch, /Project-OS|mvos-new|Tools\/|Upstream-Only|Old\.base/, "only what the copy changed since os-v1");
+    assert.doesNotMatch(patch, /\r/, "text goes as upstream stores it");
+
+    upstream.git("apply", "--3way", "--index", out);
+    const read = (p) => readFileSync(join(upstream.root, p), "utf8");
+    assert.equal(read("Knowledge-OS/Rules/Rule.md"), "rule v2 from the copy\n");
+    assert.equal(read("Knowledge-OS/Rules/New.md"), "a rule the copy added\n");
+    assert.equal(existsSync(join(upstream.root, "Knowledge-OS", "Rules", "Gone.md")), false);
+    assert.equal(read("Knowledge-OS/Rules/Upstream-Only.md"), "added upstream after os-v1\n", "upstream's later work is not undone");
+    assert.equal(read("Knowledge-OS/Old.base"), "views: [later]\n");
+  } finally {
+    rmSync(upstream.root, { recursive: true, force: true });
+    rmSync(copy, { recursive: true, force: true });
+  }
+});
+
+test("--against with no version to start from, or one upstream lacks, is refused", () => {
+  const upstream = upstreamMovedOn();
+  const unversioned = copyWithoutHistory(null);
+  const unknown = copyWithoutHistory("os-v9\n");
+  try {
+    const a = runAgainst(unversioned, ["--against", upstream.root]);
+    assert.equal(a.status, 1);
+    assert.match(a.stderr, /no \.os-version.*--base/);
+    const b = runAgainst(unknown, ["--against", upstream.root]);
+    assert.equal(b.status, 1);
+    assert.match(b.stderr, /os-v9.*does not name a commit/);
+    assert.equal(runAgainst(unknown, ["--against", upstream.root, "--base", "os-v1", "--out", join(unknown, "p")]).status, 0, "--base overrides");
+  } finally {
+    for (const d of [upstream.root, unversioned, unknown]) rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test("a ref that names no commit is refused before anything is written", () => {
   const host = hostAfterChanges();
   try {

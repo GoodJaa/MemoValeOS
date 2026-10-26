@@ -3,7 +3,7 @@ type: protocol
 status: active
 lifecycle: active
 created: 2026-08-24
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 # Knowledge Maintenance Protocol
 
@@ -86,7 +86,7 @@ Claude may perform it for `Research` once its `status` is `completed`, and for `
 
 Claude may perform it for a `Task` the moment its `status` reaches `done`, and for an `Epic` the moment its `status` reaches `active` or `done` — and must, in the same edit. This is not a judgement call held for a later pass: a Task that closes in `draft` reads as finished while carrying no `evidence`, and an Epic that stays `draft` keeps its whole subtree out of `blocking-uncertainty-on-active`, so the gate that stops work on open blocking questions is switched off by a field nobody updated. An Epic under way is the case that matters most here, because that is when its Tasks are being worked on; its `status` is derived from those Tasks rather than asserted, so the promotion records a fact the links already state. The closing ritual in `Project-OS/06-AI/AI.md` Part 2 is where it happens; `lifecycle-behind-status` in `Tools/validate-vault.mjs` is what notices when it did not.
 
-Claude must not perform it for `Product`, `Architecture` or `Decision` entities without explicit acceptance. Follow [[Rules/AI-Governance]]. For a Decision the acceptance and the promotion are one act: an `accepted` Decision left `draft` is refused by the same `lifecycle-behind-status`, so the owner's acceptance is recorded by setting both fields together.
+Claude must not perform it for `Product`, `Architecture` or `Decision` entities without explicit acceptance. Follow [[Rules/AI-Governance]]. For a Decision the acceptance and the promotion are one act: an `accepted` Decision left `draft` is refused by the same `lifecycle-behind-status`, so the owner's acceptance is recorded by setting both fields together. A rule inherited from the host (`origin: inherited`) is accepted on the owner's ratification instead of `L2`: record it as `evidence: user-provided` and `ratified: <date>` in the same edit, with `source` already naming the host file and commit ([[Schema/Evidence-Schema]]).
 
 Move knowledge to `superseded` when a replacement exists, and to `archived` when it is retained only for history.
 
