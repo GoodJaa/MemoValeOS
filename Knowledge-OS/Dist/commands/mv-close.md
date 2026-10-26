@@ -1,5 +1,5 @@
 ---
-description: Close the session — run the Session Closing Ritual in Project-OS/06-AI/AI.md: Findings, Task and Epic close-out, Current Context refresh, metrics snapshot
+description: Close the session — run the Session Closing Ritual in Project-OS/06-AI/AI.md: Findings, Task and Epic close-out, the hand-over (the Task's Progress, shared Current Context), metrics snapshot
 allowed-tools: Read, Write, Edit, Grep, Bash(node:*), Bash(git:*), Bash(rm -f *budget.json)
 ---
 

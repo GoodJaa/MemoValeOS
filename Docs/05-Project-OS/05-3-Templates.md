@@ -45,14 +45,14 @@ updated: {{date}}
 | `Prompt.md` | `prompt` | `active` | `draft` | Purpose, Context, Prompt, Expected Output, Related |
 | `Research.md` | `research` | `open` | `draft` | Question, Context, Investigation, Findings, Recommendation, Decision Impact, Sources, Related |
 | `Resource.md` | `resource` | `active` | `draft` | Type, URL, Description, Why Useful, Related |
-| `Task.md` | `task` | `todo` | `draft` | Objective, Context, Requirements, Acceptance Criteria, Relevant Architecture, Relevant Decisions, Research, Implementation, Tests, Result, Discoveries, Follow-up, Related |
+| `Task.md` | `task` | `todo` | `draft` | Objective, Context, Requirements, Acceptance Criteria, Relevant Architecture, Relevant Decisions, Research, Progress, Implementation, Tests, Result, Discoveries, Follow-up, Related |
 
 Как читать таблицу:
 
 - **`status` — первое значение жизненного пути типа** из `statusByType` в [[Knowledge-OS/Schema/schema.json]]: задача начинается с `todo`, эпик с `planned`, решение с `proposed`, идея с `inbox`, исследование с `open`. У типов с единственным допустимым статусом (`log`, `prompt`, `resource`, `finding`) это `active`. У `product` и `architecture` поля `status` нет: их словарь повторял `lifecycle` (`status-not-allowed-for-type`).
 - **`lifecycle: draft` у всех, кроме Finding.** Новая сущность — черновик, пока не наберёт порог доказательности своего типа и не будет повышена по [[Knowledge-OS/Rules/Promotion-Rules]]. Если бы шаблон начинал с `active`, порог пришлось бы обходить уже при рождении.
 - **Раздел `## Related`** есть почти везде: туда, по [[Knowledge-OS/Schema/Relationship-Types]], ставятся строки-связи `depends-on::`, `constrained-by::` и другие, если у связи нет более подходящего раздела. В `Epic.md` для этого есть отдельные разделы: `## Tasks` для `contains::`, `## Dependencies` для `depends-on::`, `## Decisions` для `constrained-by::`.
-- **Разделы `Task.md` повторяют путь контекста.** Relevant Architecture, Relevant Decisions и Research — это ступени расширения контекста из [[Knowledge-OS/Protocols/Context-Selection-Protocol]] (задача → эпик → архитектура → решения → исследования). Задача сама называет, что ещё нужно читать. Tests, Result и Discoveries заполняются по ходу и в конце работы. Discoveries — то место, откуда растут Findings.
+- **Разделы `Task.md` повторяют путь контекста.** Relevant Architecture, Relevant Decisions и Research — это ступени расширения контекста из [[Knowledge-OS/Protocols/Context-Selection-Protocol]] (задача → эпик → архитектура → решения → исследования). Задача сама называет, что ещё нужно читать. Tests, Result и Discoveries заполняются по ходу и в конце работы. Discoveries — то место, откуда растут Findings. Progress переписывается в конце каждой сессии, пока задача открыта: где остановились и следующий шаг. С него начинает тот, кто продолжит (часть 3 ритуала в [[Project-OS/06-AI/AI]]). Раздел появился в os-v8. Апстримный шаблон задачи его не несёт, поэтому ритуал добавляет раздел в заметку сам, если его нет.
 
 ### `Finding.md`: шаблон, который проваливает проверку намеренно
 
@@ -77,7 +77,7 @@ Add it from what you actually did, per `evidenceActionMap` in
 [[Knowledge-OS/os-manifest]] содержит строку-исключение `!Project-OS/Templates/Task.md`. Это записанное **постоянное расхождение** ([[CHANGELOG]], раздел о сознательных расхождениях):
 
 - апстрим сократил шаблон задачи до 6 разделов (Objective, Context, Acceptance Criteria, Implementation, Result, Follow-up);
-- шаблон Archi держит 13 разделов, которыми уже пользовались 50 задач. Ко времени решения у пяти выполненных задач все 13 разделов были заполнены на 100%;
+- шаблон Archi держал 13 разделов, которыми уже пользовались 50 задач. Ко времени решения у пяти выполненных задач все 13 разделов были заполнены на 100%. С os-v8 разделов 14: добавлен Progress;
 - перенос апстримного шаблона дал бы две формы задачи в одном хранилище и удалил бы разделы, которые заполняются каждый раз. Отправка местного в апстрим навязала бы апстриму форму, которую он сознательно отверг.
 
 Решение — не синхронизировать файл ни в одну сторону. Правило `os-layer-outside-manifest` на нём не срабатывает, потому что `!`-строка явно выводит его из слоя. `os-patch.mjs` не включает его в доставку. [[Knowledge-OS/Dist/commands/mv-sync]] перечисляет это расхождение среди тех, которые *must not be "fixed" during a sync*.

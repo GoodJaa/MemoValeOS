@@ -63,9 +63,7 @@
 | `CORE_TEMPLATE_PLACEHOLDERS = ["title", "date"]` | `checkTemplate()` | что подставляет Obsidian |
 | `contains` | правила эпиков | связь Epic → Task |
 | маркеры `open` / `yes` | `blocking-uncertainty-on-active` | словарь реестра неопределённостей |
-| регулярное выражение «открытых» статусов задачи (ниже) | [[Project-OS/06-AI/AI]], `/mv-resume` | grep следующей задачи |
-
-Регулярное выражение из последней строки: `^status: (todo|in-progress|blocked|review)`.
+| `CLOSED = ["done", "cancelled"]`, `FREE = ["todo"]` | [[Knowledge-OS/Tools/task-lookup.mjs]] | какая задача закрыта, какая свободна; любой другой статус — «взята» |
 
 ## Почему так
 
@@ -102,7 +100,7 @@
 **2. Решить смысл для зашитых в код мест.** Это самый важный шаг, и его легко пропустить:
 
 - считается ли `deferred` завершённой для эпика? Если нет — ничего не менять, и эпик с отложенной задачей не станет `done` (`epic-status-behind-tasks` не сработает, `epic-status-ahead-of-tasks` сработает, если эпик объявят `done`). Если да — добавить в `EPIC_TERMINAL_TASK_STATUS` в [[Knowledge-OS/Tools/validate-vault.mjs]];
-- должна ли она находиться grep'ом следующей задачи? Решение «нет» не требует правок — `^status: (todo|in-progress|blocked|review)` её не найдёт. Решение «да» требует правки регулярного выражения в [[Project-OS/06-AI/AI]], [[Knowledge-OS/Dist/commands/mv-resume]] и его развёрнутой копии в `.claude/commands/` (иначе `deployed-command-drift`), а также в хабе разработки проекта;
+- что она значит для поиска задачи? Без правок [[Knowledge-OS/Tools/task-lookup.mjs]] считает её открытой и взятой: её не предложат следующей и не дадут взять без `--force`. Если она должна быть закрытой — добавить в `CLOSED`, если свободной — в `FREE`;
 - фильтры `.base` в Project-OS (представления «Open tasks», «Blocked»).
 
 **3. `Schema/*.md`.** Строка в разделе Status в [[Knowledge-OS/Schema/Metadata-Schema]]:

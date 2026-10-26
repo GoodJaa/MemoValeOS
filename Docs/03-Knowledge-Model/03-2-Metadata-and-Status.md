@@ -160,6 +160,6 @@ ERRORS (3)
 ## Как менять
 
 - **Новый ключ frontmatter:** добавить его в `metadataKeys` в [[Knowledge-OS/Schema/schema.json]] и описать в [[Knowledge-OS/Schema/Metadata-Schema]] (в Required или Optional, с объяснением, какой автоматизации или маршрутизации он нужен). Если у ключа есть словарь значений — отдельный ключ в `schema.json` и проверка в валидаторе по образцу `priorities` / `unknown-priority`. Без проверки значения новый ключ — свободный текст.
-- **Новое значение статуса** — разобранный пример в [[Docs/03-Knowledge-Model/03-7-schema-json]]. Обратите внимание на места, где статусы зашиты вне схемы: `EPIC_TERMINAL_TASK_STATUS` в валидаторе, grep следующей задачи `^status: (todo|in-progress|blocked|review)` в [[Project-OS/06-AI/AI]] и `/mv-resume`, фильтры `.base`-файлов.
+- **Новое значение статуса** — разобранный пример в [[Docs/03-Knowledge-Model/03-7-schema-json]]. Обратите внимание на места, где статусы зашиты вне схемы: `EPIC_TERMINAL_TASK_STATUS` в валидаторе, `CLOSED` и `FREE` в [[Knowledge-OS/Tools/task-lookup.mjs]], фильтры `.base`-файлов.
 - **Удаление или переименование значения** ломает существующие заметки — это миграция данных проектов, и секция в [[CHANGELOG]] должна назвать её в разделе «Что валидатор начал требовать».
 - Проверка: фикстура и тест (см. [[Docs/06-Tooling/06-6-Tests-and-Fixtures]]), затем полный прогон валидатора.

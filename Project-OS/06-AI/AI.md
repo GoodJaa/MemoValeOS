@@ -3,7 +3,7 @@ type: index
 status: active
 lifecycle: active
 created: 2026-08-24
-updated: 2026-10-25
+updated: 2026-10-26
 ---
 
 
@@ -53,12 +53,12 @@ Then ask the human, in one message: for each proposed Finding, which was done �
 3. Read the parent Epic. If every `contains::` Task is `done` or `cancelled`, set `status: done`; otherwise `status: active`. If it is still `lifecycle: draft`, promote it in the same edit — `lifecycle: active`, `evidence` (normally `L2`), `updated` — per [[Knowledge-OS/Protocols/Knowledge-Maintenance-Protocol]]. If the promotion makes `blocking-uncertainty-on-active` fire, report it: the gate is working. That rule checks the note a ledger row links to, not the Tasks an Epic contains, so a row should link the Tasks it blocks.
 4. Run `node "Knowledge-OS/Tools/mv.cjs" validate-vault` and report the result. `lifecycle-behind-status` or `epic-status-behind-tasks` here means a step above was skipped.
 
-**Part 3 — refresh Current Context, always.**
+**Part 3 — hand the work over, always.** What the next session needs goes where everyone on the project reads it — people and agents alike — and nothing here depends on how the team uses branches.
 
-1. Re-run the lookup `/mv-resume` and [[Project-OS/03-Development/Development]] use — `Grep("^status: (todo|in-progress|blocked|review)", path="Project-OS/03-Development/Tasks")` — for the next open Task and its Epic. Which one is next comes from `tasks.next` in `mvos.config.json`: `lowest-number` (the default, and what `tasks.keying: sequence` implies) takes the lowest-numbered match; `explicit` (what `tasks.keying: external` implies) keeps the Task Current Context names while it is still open, and otherwise asks the owner which — Tasks named by a tracker's keys carry no order, so do not pick one.
-2. Rewrite `Current Epic`, `Current Task` and `Current Goal` in [[Current-Context]] to match that lookup.
-3. Rewrite `Relevant Code` only if this session changed what has real behaviour; leave `Required Architecture`, `Relevant Decisions` and `Relevant Research` unless this session changed them.
-4. Re-run the lookup even if nothing seems to have changed.
+1. Run `node "Knowledge-OS/Tools/mv.cjs" task-lookup` from the vault root, even if nothing seems to have changed. It names the Task this working copy is on, the free Tasks, the Tasks taken here or on any branch not merged into `HEAD`, and the next one by `tasks.next` in `mvos.config.json`: `lowest-number` (the default, and what `tasks.keying: sequence` implies) offers the lowest-numbered free Task; `explicit` (what `tasks.keying: external` implies) offers none — Tasks named by a tracker's keys carry no order, so a human names the next one.
+2. If this session worked on a Task that is still open, rewrite its `## Progress` section, adding it if the note has none: what is done, where the work stopped, the next concrete step, and what the next session must not have to find out again. Whoever picks the Task up next starts there. What the Task needs — its Architecture, Decisions, Research and code — goes in the Task's own sections, not in Current Context.
+3. If the Task reached `done` or `cancelled` in Part 2, release this working copy's cursor: `node "Knowledge-OS/Tools/mv.cjs" task-lookup --release`.
+4. In [[Current-Context]], rewrite a section only if this session changed what it says: `Active Epics` when an Epic changed status; `Required Architecture`, `Relevant Decisions`, `Relevant Research` or `Relevant Code` when the project's architecture, decisions, research or real behaviour changed; `Open Questions` when a question for the owner was raised or answered. Current Context holds only what the whole project shares. Which Task is next is not written into it: the lookup derives it, per working copy, every time.
 5. Delete `.claude/budget.json` if it exists — at the project root, one level above the vault when embedded — per [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2. It was drawn for the work that just closed.
 
 **Part 4 — metrics snapshot, always.** From the vault root:
@@ -72,7 +72,26 @@ node "Knowledge-OS/Tools/mv.cjs" context-metrics --write --session <id> --label 
 - The transcript cannot include this ritual's own calls, so the row slightly undercounts the session.
 - `NOTE vault reached only through the shell` means the file-tool columns are unmeasured, not zero; pass it on as it stands.
 
-**Close** by listing the Findings written (or saying plainly that none were needed), confirming Current Context was refreshed and whether a budget was cleared, and reporting the metrics row: session id, Mean, label.
+**Close** by listing the Findings written (or saying plainly that none were needed), saying which Task's Progress was rewritten and which Current Context sections changed (or that none did), whether a cursor was released and a budget cleared, and reporting the metrics row: session id, Mean, label.
+
+## Taking a Task
+
+A Task is taken by its status, and git shares the status. Nobody's name is recorded: the commit that changed the status already says who.
+
+1. Before the first edit for a free Task, take it in this working copy: `node "Knowledge-OS/Tools/mv.cjs" task-lookup --take <Task>`. The cursor lives inside git's own directory — one per worktree, never committed.
+2. Set the Task's `status: in-progress`. Others see the claim once that change is committed and reaches a branch they fetch; pushing the branch is enough, merging is not needed. Until then nobody else can see it.
+3. `--take` refuses a Task taken anywhere else. `--force` is for one case only: this working copy's own unfinished Task whose cursor was lost — a new clone, or a Task taken before the cursor existed. When that is not certain, ask the human first.
+4. A taken Task reported as possibly abandoned — unchanged for `tasks.staleDays` days, 14 by default — is a question for the owner, not a Task to take.
+
+## Current Context from before os-v8
+
+Until os-v8, [[Current-Context]] held one working copy's session state — `Current Epic`, `Current Task`, `Current Goal` — and every close rewrote it, so two people on two branches conflicted there at every merge. A note that still has `## Current Task` or `## Current Goal` is reported by the validator (`current-context-old-shape`) and by `task-lookup`. Move it once, with the owner:
+
+1. Propose a numbered list: for each part of `Current Task` and `Current Goal`, where it goes — the Task's own sections or its `## Progress` (what that Task needs), `Open Questions` (what the owner decides for the project), or nowhere, because the lookup or git now says it (which Task is next, what was merged).
+2. Apply each item only after the owner approves it. Nothing is deleted before what it says has a place; an item without a clear place stays where it is.
+3. If `Current Task` names a Task this working copy is on, take it: `task-lookup --take <Task>`, with `--force` when it is already `in-progress`.
+4. Remove the two sections, rename `Current Epic` to `Active Epics`, add `Open Questions` if absent, and commit the move as one commit, so it can be reverted as one.
+5. Run the validator: `current-context-old-shape` is gone.
 
 ## Governance
 

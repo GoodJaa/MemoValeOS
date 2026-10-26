@@ -35,15 +35,15 @@ Open work is not tracked by a separate hand-kept list; the Tasks themselves are 
 
 ## Finding the Next Task
 
-To find the next open task without loading the rest of Project OS:
+To find the next Task without loading the rest of Project OS:
 
-1. `Grep("^status: (todo|in-progress|blocked|review)", path="Project-OS/03-Development/Tasks")` — matches frontmatter directly, without opening each Task to read its `status`.
-2. Tasks are numbered `T01`, `T02`, … in delivery order. The next candidate is the lowest-numbered match.
-3. Read that Task, and only that Task, to confirm scope before starting.
+1. `node "Knowledge-OS/Tools/mv.cjs" task-lookup` from the vault root. A Task is open unless it is `done` or `cancelled`, free while it is `todo`, and taken once work has started — here, or on any branch not merged into `HEAD`.
+2. Tasks are numbered `T01`, `T02`, … in delivery order. The next one is this working copy's own Task while it is open, otherwise the lowest-numbered free Task.
+3. Read that Task, and only that Task, to confirm scope before starting; take it per [[AI]], "Taking a Task".
 
-This never requires reading Epics, Architecture, or every Task body first — one Grep across frontmatter is enough to pick the candidate, in place of opening every Task file to check its `status`. Expand from there per [[Knowledge-OS/Protocols/Context-Selection-Protocol]].
+This never requires reading Epics, Architecture, or every Task body first. Expand from there per [[Knowledge-OS/Protocols/Context-Selection-Protocol]].
 
-This is the same "not done or cancelled" set `Project-OS/03-Development/Backlog.base`'s "Open tasks" view filters to; that view (or its MCP/Obsidian equivalent) is the preferred source when available — see the `/mv-resume` command.
+`Project-OS/03-Development/Backlog.base`'s "Open tasks" view filters the same "not done or cancelled" set, but it sees this working copy only: a Task taken on someone else's branch still reads `todo` there.
 
 ## Findings
 

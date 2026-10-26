@@ -5,6 +5,7 @@
   "tasks": {
     "keying": "external",
     "keyPattern": "^[A-Z][A-Z0-9]*-\\d+$",
-    "next": "explicit"
+    "next": "explicit",
+    "staleDays": 7
   }
 }

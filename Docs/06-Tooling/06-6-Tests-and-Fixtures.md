@@ -14,11 +14,11 @@
 Только встроенный `node:test` и `node:assert/strict`, без фреймворков, Node ≥ 18. Нужен git в `PATH` — несколько тестов строят временные репозитории. `npm install` нужен ради одной dev-зависимости, `acorn`, которой тесты проверяют синтаксис хука и лаунчера. `js-yaml` раньше тоже требовал `npm install`, а раннеры фикстур искали его в двух местах `node_modules`; теперь он в `Knowledge-OS/Tools/vendor/`, и раннеры просто копируют эту папку рядом с копией инструмента.
 
 ```bash
-npm test                                                       # всё: 267 тестов
+npm test                                                       # всё: 287 тестов
 node "Knowledge-OS/Tools/run-tests.mjs" --list                  # какие файлы войдут в прогон
 node "Knowledge-OS/Tools/run-tests.mjs" validate-vault          # только файлы, в пути которых есть это слово
-node --test "Knowledge-OS/Tools/validate-vault.test.mjs"        # 88: 46 из CASES + 42 отдельных
-node --test "Knowledge-OS/Tools/context-metrics.test.mjs"       # 37
+node --test "Knowledge-OS/Tools/validate-vault.test.mjs"        # 93: 49 из CASES + 44 отдельных
+node --test "Knowledge-OS/Tools/context-metrics.test.mjs"       # 38
 node --test "Knowledge-OS/Tools/adopt.test.mjs"                 # 37
 npm run test:context-provider                                  # 16
 node --test "Knowledge-OS/Tools/os-check.test.mjs"              # 12
@@ -33,6 +33,7 @@ node --test "Knowledge-OS/Dist/hooks/budget-audit.test.mjs"     # 9
 node --test "Knowledge-OS/Tools/mv.test.mjs"                    # 11
 node --test "Knowledge-OS/Tools/build-plugin.test.mjs"          # 8
 node --test "Knowledge-OS/Tools/task-import.test.mjs"           # 8
+node --test "Knowledge-OS/Tools/task-lookup.test.mjs"           # 14
 ```
 
 `npm test` запускает `run-tests.mjs`, а тот сам находит каждый `*.test.mjs` под `Knowledge-OS/` (кроме `__fixtures__/`, `__provider_fixtures__/`, `node_modules/` и dot-каталогов) и передаёт их одному вызову `node --test` — через `process.execPath`, то есть тем же Node, которым запущен. До 2026-10-25 скрипт `test` в [[package.json]] перечислял файлы вручную, и новый тестовый файл не попадал в прогон, пока его не дописывали. Собственный поиск, а не glob самого `node --test`: glob там появился только в Node 21.

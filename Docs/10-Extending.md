@@ -138,8 +138,8 @@ __fixtures__/docs-link-target/Project-OS/Note.md ← ссылается на [[D
 
 1. В `schema.json` добавить `"deferred"` в `statusByType.task`.
 2. В [[Knowledge-OS/Schema/Metadata-Schema]] объяснить, чем `deferred` отличается от `blocked` и `cancelled`.
-3. Проверить, какие процедуры перечисляют статусы буквально. Grep следующей задачи `^status: (todo|in-progress|blocked|review)` в описании Development и в `/mv-resume` решает, считается ли `deferred` открытой задачей. Свёртка эпика (`epic-status-behind-tasks`) считает закрытыми только `done` и `cancelled`, поэтому эпик с `deferred`-задачей не закроется. Это решение, и его надо принять явно.
-4. Сверить представление «Open tasks» в `Backlog.base`. Оно фильтрует от обратного: «не `done` и не `cancelled`». Поэтому `deferred` окажется в открытых задачах в Obsidian, но не в grep из шага 3. Два способа увидеть бэклог разойдутся, если не поправить один из них.
+3. Проверить, какие процедуры перечисляют статусы буквально. [[Knowledge-OS/Tools/task-lookup.mjs]] знает только закрывающие (`CLOSED`) и свободный (`FREE`), поэтому `deferred` для него — открытая и взятая задача: её не предложат следующей. Свёртка эпика (`epic-status-behind-tasks`) считает закрытыми только `done` и `cancelled`, поэтому эпик с `deferred`-задачей не закроется. Это решения, и их надо принять явно.
+4. Сверить представление «Open tasks» в `Backlog.base`. Оно фильтрует от обратного: «не `done` и не `cancelled`», поэтому `deferred` окажется в открытых задачах в Obsidian так же, как в поиске.
 5. Тест и фикстура, запись в CHANGELOG.
 
 ## Подводные камни

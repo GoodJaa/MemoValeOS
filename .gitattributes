@@ -5,6 +5,13 @@
 *.base text eol=lf
 *.mjs  text eol=lf
 
+# The metrics log only grows: every closed session adds one row at its end.
+# Two branches that each closed a session append after the same last line,
+# and git calls that a conflict. `union` keeps the lines of both sides
+# instead — right for a log whose rows are not edited, wrong for a note that
+# is, so it is named here and nowhere else.
+Metrics/Context-Metrics.md merge=union
+
 # Attachments are not text.
 *.png binary
 *.jpg binary

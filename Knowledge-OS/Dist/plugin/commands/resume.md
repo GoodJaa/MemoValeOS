@@ -1,7 +1,7 @@
 ---
 description: Resume work — after a normal session gap, or after reconnecting from an Obsidian/MCP disconnection; with a key, on that Task
 argument-hint: "[<task key>]"
-allowed-tools: Read, Glob, Grep, Write(.claude/budget.json)
+allowed-tools: Read, Glob, Grep, Write(.claude/budget.json), Bash(node:*)
 ---
 
 <!-- Built by Knowledge-OS/Tools/build-plugin.mjs from Knowledge-OS/Dist/commands/mv-resume.md. Edit the source, then rebuild. -->

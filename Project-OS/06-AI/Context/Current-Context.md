@@ -5,17 +5,13 @@ lifecycle: draft
 ---
 # Current Context
 
-State needed to resume work without deriving it again.
+State the whole project shares, needed to resume work without deriving it again.
 
-> **State, not a log.** The closing ritual in [[AI]] (Part 3) rewrites these sections at the end of every session to match what is true then; nothing is appended. Once a Task moves, the old contents are simply wrong — which is why this note is an `index` and not a `log`. Blocking questions and unverified assumptions belong in [[Uncertainties]], not here.
+> **State, not a log.** A section is rewritten when what it says changes — by the session that changed it, per the closing ritual in [[AI]] (Part 3) — and nothing is appended. Once the project moves, the old contents are simply wrong — which is why this note is an `index` and not a `log`. Which Task a working copy is on is not here: it is that copy's cursor (`task-lookup`), and where work on a Task stopped is the Task's own `## Progress`. Blocking questions and unverified assumptions belong in [[Uncertainties]], not here.
 
-## Current Epic
+## Active Epics
 
--
-
-## Current Task
-
-> The lowest-numbered open Task, from the lookup in [[Development]] — not the Task the session started with.
+> Epics in progress and their state. Rewritten when an Epic changes status.
 
 -
 
@@ -37,8 +33,8 @@ State needed to resume work without deriving it again.
 
 -
 
-## Current Goal
+## Open Questions
 
-> The next concrete step, precise enough to execute without rereading everything.
+> Decisions waiting for the owner that concern the whole project.
 
 -

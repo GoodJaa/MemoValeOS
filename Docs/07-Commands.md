@@ -104,12 +104,12 @@ allowed-tools: Write, Read, Bash(node:*), Bash(git rev-parse:*)
 **Шаги.** Команда — указатель: она велит прочитать раздел «Session Closing Ritual» в `AI.md` и выполнить его целиком. Пересказа в ней нет; раздел — единственная формулировка ритуала. Коротко, что в нём:
 1. **Два вопроса**, на которые отвечает сам ассистент по записи сессии: что сессия установила такого, чего нет в `git log` и изменённых заметках; что не задокументировано, хотя стоило. Пустой ответ — нормальный. Содержательный ответ — один Finding в одну строку со строкой `affects::`/`related-to::`; наблюдение без предмета в хранилище идёт в `Backlog.md`. Затем человеку одним сообщением: какое действие стоит за каждой находкой (`read` / `ran` / `used` / `confirmed` → `evidence` через `evidenceActionMap`, без умолчания) и **«Что-то ещё добавить?»**.
 2. **Закрыть задачу и эпик**, если задача дошла до `done`: `lifecycle`, `evidence`, `created`, `updated`, `source`. Свести эпик по `contains::`. Запустить валидатор.
-3. **Переписать Current Context** по повторному поиску открытой задачи и **удалить `.claude/budget.json`**.
+3. **Передать работу**: запустить `task-lookup`; переписать раздел `## Progress` открытой задачи, над которой шла работа; снять курсор, если задача закрыта (`--release`); в общем Current Context переписать только то, что сессия изменила; **удалить `.claude/budget.json`**.
 4. **Снимок метрик**: `context-metrics.mjs --write --session <id> --label <класс>` с явным `<id>`.
 
-В конце — список записанных Findings (или прямое «не понадобились»), подтверждение обновления Current Context и удаления бюджета, строка метрик (id сессии, Mean, label).
+В конце — список записанных Findings (или прямое «не понадобились»), чей `Progress` переписан и какие разделы Current Context изменились, снят ли курсор и удалён ли бюджет, строка метрик (id сессии, Mean, label).
 
-**Вызывает.** [[Knowledge-OS/Tools/validate-vault.mjs]], [[Knowledge-OS/Tools/context-metrics.mjs]]; правила [[Knowledge-OS/Schema/Relationship-Types]], [[Knowledge-OS/Protocols/Knowledge-Maintenance-Protocol]], [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2.
+**Вызывает.** [[Knowledge-OS/Tools/task-lookup.mjs]], [[Knowledge-OS/Tools/validate-vault.mjs]], [[Knowledge-OS/Tools/context-metrics.mjs]]; правила [[Knowledge-OS/Schema/Relationship-Types]], [[Knowledge-OS/Protocols/Knowledge-Maintenance-Protocol]], [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2.
 
 **Аргументы.** Нет. Метка `--label` выбирается по классу работы (`task`, `maintenance`; для особых прогонов `control`, `plan-review`), и выбор объясняется в итоге.
 
@@ -185,15 +185,16 @@ allowed-tools: Write, Read, Bash(node:*), Bash(git rev-parse:*)
 
 **Шаги.**
 1. Если это возврат после разрыва связи — сказать явно, что прежние допущения не переносятся ([[Knowledge-OS/Rules/AI-Governance]], Connectivity), и ориентироваться только по прочитанному.
-2. Прочитать по порядку и больше ничего: `Current-Context.md`; `Uncertainties.md` (только `open` + `Blocking: yes`); `Backlog.base` (фильтры «Open tasks», «Blocked»; без живого запроса — `Grep("^status: (todo|in-progress|blocked|review)", …)`).
-3. Объявить бюджет чтения по [[Knowledge-OS/Protocols/Context-Selection-Protocol]] и записать его в `.claude/budget.json` — единственный файл, который команде разрешено писать (`Write(.claude/budget.json)` в `allowed-tools`).
-4. Закончить ровно одним следующим шагом. Если задача заблокирована открытой неопределённостью — вынести её человеку как решение.
+2. Сделать по порядку и больше ничего: `task-lookup` (своя задача копии, свободные, взятые, следующая); `Current-Context.md` (общее для проекта); `Uncertainties.md` (только `open` + `Blocking: yes`); задачу — свою, начиная с `## Progress`, иначе следующую. Если поиск не предлагает задачу, спросить человека.
+3. Если Current Context старой формы — следующий шаг: предложить перенос по [[Project-OS/06-AI/AI]], «Current Context from before os-v8». Если курсора нет, а здесь есть взятые задачи, спросить человека, не своя ли это незаконченная работа.
+4. Объявить бюджет чтения по [[Knowledge-OS/Protocols/Context-Selection-Protocol]] и записать его в `.claude/budget.json` — единственный файл, который команде разрешено писать (`Write(.claude/budget.json)` в `allowed-tools`).
+5. Закончить ровно одним следующим шагом. Если он начинает свободную задачу — сначала взять её («Taking a Task» в `AI.md`). Если задача заблокирована открытой неопределённостью — вынести её человеку как решение.
 
-**Вызывает.** Протокол выбора контекста; инструменты `Read, Glob, Grep`.
+**Вызывает.** [[Knowledge-OS/Tools/task-lookup.mjs]], протокол выбора контекста; инструменты `Read, Glob, Grep, Bash(node:*)`.
 
-**Аргументы.** `[<ключ задачи>]`. С ключом (`/mv-resume PRJ-101`) текущая задача — та, у которой `key` такой (`Grep("^key: \"?PRJ-101\"?$", …)`) или имя файла с него начинается; это заменяет поиск открытой задачи в шаге 2. Задачи с таким ключом нет — команда так и говорит и предлагает `/mv-task-import`, а не придумывает задачу по ключу.
+**Аргументы.** `[<ключ задачи>]`. С ключом (`/mv-resume PRJ-101`) задача — та, у которой `key` такой или имя файла с него начинается; это заменяет выбор задачи в шаге 2. Задачи с таким ключом нет — команда так и говорит и предлагает `/mv-task-import`, а не придумывает задачу по ключу.
 
-**Границы.** Не решать блокирующую неопределённость самостоятельно. Не читать ничего сверх трёх файлов до объявления бюджета. Подробно — [[Docs/05-Project-OS/05-4-Session-Lifecycle]].
+**Границы.** Не решать блокирующую неопределённость самостоятельно. Не читать ничего сверх названного до объявления бюджета. `--take --force` — только со слов человека. Подробно — [[Docs/05-Project-OS/05-4-Session-Lifecycle]].
 
 ## /mv-survey
 
@@ -278,15 +279,16 @@ allowed-tools: Write, Read, Bash(node:*), Bash(git rev-parse:*)
 
 ```text
 /mv-resume
-→ Current Context: E07, следующая T29; блокирующих неопределённостей нет;
-  бюджет: src/repository/, src/storage/, T29; шаг: прочитать T29.
+→ task-lookup: копия ни на чём, следующая T29; Current Context: E07 активен;
+  блокирующих неопределённостей нет; бюджет: src/repository/, src/storage/, T29;
+  шаг: взять T29 (task-lookup --take T29, status: in-progress) и прочитать её.
 /mv-note "FileMetadata и StoredFile должны меняться вместе — структурная совместимость"
 → Project-OS/03-Development/Findings/FileMetadata-and-StoredFile-change-together.md
 /mv-check
 → PASS, 0 errors, N warnings (orphaned-note …)
 /mv-close
-→ 1 Finding, T29 закрыта, E07 → done, Current Context обновлён, бюджет удалён,
-  строка метрик: <id>, Mean …, label task
+→ 1 Finding, T29 закрыта, E07 → done, курсор снят, в Current Context
+  переписан Active Epics, бюджет удалён, строка метрик: <id>, Mean …, label task
 ```
 
 Это иллюстрация потока, а не запись реальной сессии.

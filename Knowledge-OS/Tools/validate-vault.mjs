@@ -974,6 +974,61 @@ for (const [rel, note] of notes) {
   );
 }
 
+/* A number is taken by whoever writes the next file, and two branches each
+ * write "the next one": two people who open a Task on the same day both get
+ * T53. Git sees two different files and merges them without a word, so the
+ * collision outlives the merge — two Tasks answer to one number, and a link,
+ * a branch name or `--take T53` reaches either. This is where every way of
+ * working with branches meets: whatever the flow, the merged tree is checked
+ * here, in pre-push or CI, before anyone builds on the ambiguity.
+ *
+ * Numbered notes are Tasks, Epics and Decisions (`T07-…`, `E03-…`,
+ * `ADR-006-…`), grouped per type and compared by value, so `T7` and `T07`
+ * collide. A tracker key (`key:`) is one Task's or Epic's too. Rows of the
+ * uncertainty ledger are numbered `U-NNN` in their first cell. The first file
+ * in each group keeps the number; every other one is reported. */
+const NUMBERED_TYPES = ["task", "epic", "decision"];
+const numberGroups = new Map();
+const claim = (key, rel, what) => numberGroups.set(key, [...(numberGroups.get(key) ?? []), { rel, what }]);
+
+for (const [rel, note] of notes) {
+  if (!isGoverned(rel)) continue;
+  const type = typeOf(note.fm);
+  if (NUMBERED_TYPES.includes(type)) {
+    const m = /^([A-Za-z]+-?)(\d+)(?=[-_ .]|$)/.exec(rel.split(sep).pop().replace(/\.md$/, ""));
+    if (m) claim(`${type}\0${m[1].toUpperCase()}${Number(m[2])}`, rel, `${m[1]}${m[2]}`);
+    if ((type === "task" || type === "epic") && typeof note.fm?.key === "string") claim(`key\0${note.fm.key}`, rel, `key \`${note.fm.key}\``);
+  }
+  if (/uncertaint/i.test(rel)) {
+    for (const line of stripCodeAndInline(note.body).split("\n")) {
+      const id = /^\|\s*(U-\d+)\s*\|/.exec(line.trim());
+      if (id) claim(`ledger\0${rel}\0${id[1]}`, rel, `row ${id[1]}`);
+    }
+  }
+}
+for (const group of numberGroups.values()) {
+  if (group.length < 2) continue;
+  const [first, ...rest] = group.sort((a, b) => a.rel.localeCompare(b.rel));
+  for (const g of rest) {
+    const where = g.rel === first.rel ? "earlier in this file" : `\`${first.rel}\``;
+    err(g.rel, "duplicate-number", `${g.what} is already used by ${where}; two branches each took "the next one". Renumber this one and the links to it`);
+  }
+}
+
+/* Current-Context.md was one person's session state in a file every session
+ * rewrote: with two people on two branches, every merge conflicted there and
+ * one side's state was lost. Since os-v8 it holds only what the project
+ * shares, and a working copy's Task is a cursor (task-lookup.mjs). The two
+ * sections that made it personal are the mark of the old shape. A warning:
+ * the move is a judgment about where each part goes, made with the owner. */
+for (const [rel, note] of notes) {
+  if (!isGoverned(rel) || rel.split(sep).pop() !== "Current-Context.md") continue;
+  const old = [...stripCodeAndInline(note.body).matchAll(/^## (Current Task|Current Goal)\s*$/gm)].map((m) => `\`## ${m[1]}\``);
+  if (old.length) {
+    warn(rel, "current-context-old-shape", `${old.join(" and ")} hold one working copy's session state in a file every session shares; move them as Project-OS/06-AI/AI.md, "Current Context from before os-v8", says`);
+  }
+}
+
 /* D18: every file in the OS layer must be named by `os-manifest`.
  *
  * The manifest is what delivery is defined against: `os-patch.mjs` carries
@@ -1185,19 +1240,22 @@ const CONFIG_KEYS = {
   language: { ok: (v) => typeof v === "string" && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v), expected: "a language tag such as ru, en, de or pt-BR" },
   notes: { ok: (v) => ["language", "english", "split"].includes(v), expected: "language, english or split" },
   /* How Tasks are named and which comes next. `sequence` numbers them T01,
-   * T02… and the lowest open number is next; `external` names a Task by its
+   * T02… and the lowest free number is next; `external` names a Task by its
    * key in the project's tracker, and the next one is the one a human names.
-   * The first real installation needed the second and built it by hand. */
+   * The first real installation needed the second and built it by hand.
+   * `staleDays`: after how many days without a change task-lookup.mjs calls
+   * a taken Task possibly abandoned (14 when absent). */
   tasks: {
     ok: (v) =>
       Boolean(v) &&
       typeof v === "object" &&
       !Array.isArray(v) &&
-      Object.keys(v).every((k) => ["keying", "keyPattern", "next"].includes(k)) &&
+      Object.keys(v).every((k) => ["keying", "keyPattern", "next", "staleDays"].includes(k)) &&
       (v.keying === undefined || ["sequence", "external"].includes(v.keying)) &&
       (v.next === undefined || ["lowest-number", "explicit"].includes(v.next)) &&
-      (v.keyPattern === undefined || (typeof v.keyPattern === "string" && compiles(v.keyPattern))),
-    expected: '{"keying": "sequence" | "external", "keyPattern": "<regular expression>", "next": "lowest-number" | "explicit"}, every key optional',
+      (v.keyPattern === undefined || (typeof v.keyPattern === "string" && compiles(v.keyPattern))) &&
+      (v.staleDays === undefined || (Number.isInteger(v.staleDays) && v.staleDays > 0)),
+    expected: '{"keying": "sequence" | "external", "keyPattern": "<regular expression>", "next": "lowest-number" | "explicit", "staleDays": <days, a positive integer>}, every key optional',
   },
 };
 

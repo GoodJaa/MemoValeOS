@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { analyseCache, bashTouchesVault, migrateHeader, shellReadPaths, upsertRow } from "./context-metrics.mjs";
+
+const VAULT_SRC = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /* The reference numbers below were produced by an independent script written
  * during planning, reading the same transcripts this tool reads. They are here
@@ -277,6 +284,43 @@ test("a short id never collides with a row that merely contains it", () => {
   const after = upsertRow(logWith(H15, other), "abcdef12", "| abcdef12 | new | 1 |");
   assert.equal(after.replaced, false);
   assert.ok(after.text.includes(other));
+});
+
+/* Two people close a session each, on two branches: both rows go after the
+ * same last line, and a plain merge stops on a conflict in a file nobody
+ * wants to resolve by hand. The vault's `.gitattributes` names the log
+ * `merge=union`; this runs a real merge with that file, so a change to it
+ * that loses the line is caught here rather than on someone's merge. */
+test("rows appended on two branches merge without a conflict, both kept", () => {
+  const root = mkdtempSync(join(tmpdir(), "mv-metrics-merge-"));
+  try {
+    const v = join(root, "V");
+    mkdirSync(join(v, "Metrics"), { recursive: true });
+    cpSync(join(VAULT_SRC, ".gitattributes"), join(v, ".gitattributes"));
+    const log = join(v, "Metrics", "Context-Metrics.md");
+    const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "--quiet", "-b", "master");
+    git("config", "user.email", "fixture@example.invalid");
+    git("config", "user.name", "Fixture");
+    git("config", "commit.gpgsign", "false");
+    git("config", "core.autocrlf", "false");
+    writeFileSync(log, logWith(H15, "| aaaaaaaa | base |"));
+    git("add", "-A");
+    git("commit", "--quiet", "-m", "base");
+    git("checkout", "--quiet", "-b", "one");
+    writeFileSync(log, upsertRow(readFileSync(log, "utf8"), "11111111", "| 11111111 | one |").text);
+    git("commit", "--quiet", "-am", "one");
+    git("checkout", "--quiet", "master");
+    writeFileSync(log, upsertRow(readFileSync(log, "utf8"), "22222222", "| 22222222 | two |").text);
+    git("commit", "--quiet", "-am", "two");
+
+    git("merge", "--quiet", "--no-edit", "one"); // throws on a conflict
+    const merged = readFileSync(log, "utf8");
+    for (const row of ["| aaaaaaaa | base |", "| 11111111 | one |", "| 22222222 | two |"]) assert.ok(merged.includes(row), `${row} kept`);
+    assert.ok(!merged.includes("<<<<<<<"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 /* A log written on Windows carries `\r` at the end of every line. Comparing it

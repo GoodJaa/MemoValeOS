@@ -238,6 +238,9 @@ const CASES = [
   ["invalid-config", "invalid-config"],
   ["origin-incomplete", "origin-incomplete"],
   ["user-provided-not-allowed-for-decision", "evidence-not-allowed-for-type"],
+  ["duplicate-number", "duplicate-number"],
+  ["duplicate-number-ledger", "duplicate-number"],
+  ["current-context-old-shape", "current-context-old-shape"],
 ];
 
 for (const [fixture, rule] of CASES) {
@@ -759,6 +762,34 @@ test("a tasks setting outside its vocabulary is invalid-config, with the vocabul
   });
   const msg = report.errors.filter((e) => e.rule === "invalid-config").map((e) => e.message).join("\n");
   assert.match(msg, /`tasks` is .*"keying": "sequence" \| "external"/);
+});
+
+/* Numbers collide by value within a type, and only there: `T7` and `T07` are
+ * one number, `T07` and `E07` are two. The second holder is reported, once;
+ * the first keeps its number. */
+test("duplicate-number compares numbers by value within one type, and reports each later holder once", () => {
+  const report = runFixture("duplicate-number", (vault) => {
+    const note = (name, type, status, extra = "") =>
+      writeFileSync(join(vault, "Project-OS", name), `---\ntype: ${type}\nstatus: ${status}\nlifecycle: draft\n${extra}---\n\n# ${name}\n\nBody.\n`);
+    note("T7-Padding.md", "task", "todo");
+    note("E07-Other-Type.md", "epic", "planned");
+    note("PRJ-1.md", "task", "todo", 'key: "PRJ-1"\n');
+    note("Billing.md", "task", "todo", 'key: "PRJ-1"\n');
+  });
+  const dup = report.errors.filter((e) => e.rule === "duplicate-number").map((e) => `${e.file.split(/[\\/]/).pop()}: ${e.message}`);
+  assert.equal(dup.length, 3, dup.join("\n"));
+  assert.ok(dup.some((d) => /^T07-Import\.md: T07 is already used by `.*T07-Export\.md`/.test(d)), dup.join("\n"));
+  assert.ok(dup.some((d) => /^T7-Padding\.md: T7 is already used by/.test(d)), dup.join("\n"));
+  assert.ok(dup.some((d) => /^PRJ-1\.md: key `PRJ-1` is already used by `.*Billing\.md`/.test(d)), dup.join("\n"));
+  assert.ok(!dup.some((d) => d.startsWith("E07")), dup.join("\n"));
+});
+
+test("a Current Context in the shared shape is not reported", () => {
+  const report = runFixture("current-context-old-shape", (vault) => {
+    const cc = join(vault, "Project-OS", "06-AI", "Context", "Current-Context.md");
+    writeFileSync(cc, readFileSync(cc, "utf8").replace(/## Current Task[\s\S]*$/, "## Open Questions\n\nNone.\n"));
+  });
+  assert.deepEqual(rules(report), []);
 });
 
 test("undocumented-os-file-clean fixture triggers no false positive", () => {
