@@ -340,6 +340,182 @@ export function shellReadPaths(command, vaultName = VAULT.replace(/\\/g, "/").sp
   return out;
 }
 
+/* The files a shell command writes, as far as its command line says.
+ *
+ * Until os-v9 a write counted only when a file tool made it. On the owner's
+ * working project part of a session's edits to Current Context and to a Task
+ * note went through python, and the figure that should have shown that no
+ * session ever wrote Architecture or Research could not see those writes at
+ * all. The rule of shellReadPaths holds here too: a missed write is possible,
+ * an invented one is not — every path returned was written in the command.
+ *
+ * Recognised: `>` and `>>` (not `2>`), `tee`, `sed -i`, the destination of
+ * `cp`/`mv`, PowerShell's `Set-Content`/`Add-Content`/`Out-File` and the
+ * destination of `Copy-Item`/`Move-Item`, and a literal path a script opens for
+ * writing — Python's `open(p, 'w')` and `Path(p).write_text(`, Node's
+ * `writeFileSync(p`. A heredoc's body is text rather than commands and its
+ * lines are skipped; the script forms are looked for across the whole
+ * command, because a heredoc is exactly where they live. */
+const SHELL_CONTENT_VERBS = new Set(["set-content", "add-content", "out-file"]);
+const SHELL_COPY_VERBS = new Set(["cp", "mv", "copy-item", "move-item", "cpi", "mi"]);
+const SHELL_WRITE_PATH_OPTIONS = new Set(["-path", "-literalpath", "-filepath", "-destination"]);
+const SHELL_WRITE_VALUE_OPTIONS = new Set(["-value", "-encoding", "-inputobject", "-width", "-filter", "-include", "-exclude"]);
+/* `cp -t <dir> <files>`: the destination is a directory and the files keep
+ * their names, so no path on the line is the one written. Taking nothing is
+ * the honest answer. */
+const SHELL_TARGET_DIR_OPTIONS = new Set(["-t", "--target-directory"]);
+const SCRIPT_WRITES = [
+  /\bopen\(\s*r?(["'])([^"'\n]+)\1\s*,\s*r?(["'])[^"'\n]*[wax][^"'\n]*\3/g,
+  /\bPath\(\s*r?(["'])([^"'\n]+)\1\s*\)\s*\.write_(?:text|bytes)\(/g,
+  /\bwriteFileSync\(\s*(["'`])([^"'`\n]+)\1/g,
+];
+
+export function shellWritePaths(command, vaultName = VAULT.replace(/\\/g, "/").split("/").pop()) {
+  if (!command || typeof command !== "string") return [];
+  const out = [];
+  let cwd = null;
+  const take = (token) => {
+    if (looksLikePath(token)) out.push(anchorShellPath(token, cwd, vaultName));
+  };
+
+  let heredocEnd = null;
+  for (const tokens of shellSegments(command)) {
+    if (heredocEnd !== null) {
+      if (tokens.length === 1 && tokens[0] === heredocEnd) heredocEnd = null;
+      continue;
+    }
+
+    // Redirections first: they write whatever the verb is.
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      const heredoc = t.match(/^<<(?!<)-?(.*)$/);
+      if (heredoc) heredocEnd = heredoc[1].replace(/^\\/, "") || tokens[i + 1] || null;
+      else if (/^(1|&)?>{1,2}$/.test(t)) take(tokens[++i] ?? "");
+      else {
+        const attached = t.match(/^(?:1|&)?>{1,2}([^>&].*)$/);
+        if (attached) take(attached[1]);
+      }
+    }
+
+    let at = 0;
+    while (at < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[at])) at++;
+    const verb = (tokens[at] ?? "").toLowerCase();
+    const args = tokens.slice(at + 1);
+
+    if (SHELL_CD_VERBS.has(verb)) {
+      const target = args.find((a) => !a.startsWith("-"));
+      if (target) cwd = anchorShellPath(target, cwd, null);
+      continue;
+    }
+
+    // The positional arguments, with each option's value and each redirection taken out.
+    const positional = [];
+    let named = null;
+    let targetDir = false;
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const lower = arg.toLowerCase();
+      if (/^[0-9&]*[<>]/.test(arg)) {
+        if (/^[0-9&]*[<>]{1,2}&?$/.test(arg)) i++;
+        continue;
+      }
+      if (SHELL_WRITE_PATH_OPTIONS.has(lower)) {
+        named = args[++i] ?? null;
+        continue;
+      }
+      if (SHELL_TARGET_DIR_OPTIONS.has(lower)) {
+        targetDir = true;
+        i++;
+        continue;
+      }
+      if (arg.startsWith("-")) {
+        if (SHELL_WRITE_VALUE_OPTIONS.has(lower) || (verb === "sed" && SHELL_PATTERN_OPTIONS.has(lower))) i++;
+        continue;
+      }
+      positional.push(arg);
+    }
+
+    if (verb === "tee") positional.forEach(take);
+    else if (verb === "sed" && args.some((a) => /^(-i|--in-place)/.test(a))) {
+      const scriptByOption = args.some((a) => SHELL_PATTERN_OPTIONS.has(a.toLowerCase()));
+      positional.slice(scriptByOption ? 0 : 1).forEach(take);
+    } else if (SHELL_CONTENT_VERBS.has(verb)) take(named ?? positional[0] ?? "");
+    else if (SHELL_COPY_VERBS.has(verb) && !targetDir) {
+      take(named ?? (positional.length > 1 ? positional[positional.length - 1] : ""));
+    }
+  }
+
+  for (const re of SCRIPT_WRITES) {
+    for (const m of command.matchAll(re)) take(m[2]);
+  }
+  return out;
+}
+
+/* What kind of project knowledge a written note is — the question C10 asks of
+ * reads, asked of writes. A Task note growing while Architecture and Research
+ * never change is the failure os-v9 was built against, and it is invisible in
+ * a count of writes that does not say what was written.
+ *
+ * The note's own `type` decides, read when the metrics are taken; a note
+ * deleted or renamed since falls back to its folder. The uncertainty ledger is
+ * found by `uncertaint` in its path, as validate-vault.mjs finds it, and
+ * Current Context by its folder: both are `index` notes, and an index edit is
+ * otherwise `other`. An Epic counts with Tasks — both track work, neither is
+ * knowledge the next Task will read. Templates are not counted. */
+const KIND_BY_TYPE = {
+  task: "task",
+  epic: "task",
+  finding: "finding",
+  research: "research",
+  architecture: "architecture",
+  decision: "decision",
+  product: "product",
+};
+const KIND_BY_FOLDER = [
+  [/\/(Tasks|Epics)\//i, "task"],
+  [/\/Findings\//i, "finding"],
+  [/Architecture\//i, "architecture"],
+  [/Research\//i, "research"],
+  [/Decisions?\//i, "decision"],
+  [/Product\//i, "product"],
+];
+export const KINDS = ["task", "finding", "research", "architecture", "decision", "product", "uncertainty", "context", "other"];
+
+const typeCache = new Map();
+function frontmatterType(key) {
+  if (typeCache.has(key)) return typeCache.get(key);
+  let type = null;
+  try {
+    const head = readFileSync(join(VAULT, key), "utf8").slice(0, 4000);
+    const fm = head.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    type = fm?.[1].match(/^type:\s*["']?([A-Za-z-]+)/m)?.[1].toLowerCase() ?? null;
+  } catch {
+    /* gone since the session: the folder decides */
+  }
+  typeCache.set(key, type);
+  return type;
+}
+
+export function noteKind(key, typeOf = frontmatterType) {
+  if (typeof key !== "string" || !key.startsWith("Project-OS/") || !key.toLowerCase().endsWith(".md")) return null;
+  if (key.startsWith("Project-OS/Templates/")) return null;
+  if (/uncertaint/i.test(key)) return "uncertainty";
+  if (/\/Context\/[^/]+$/.test(key)) return "context";
+  const type = typeOf(key);
+  if (type) return KIND_BY_TYPE[type] ?? "other";
+  for (const [re, kind] of KIND_BY_FOLDER) if (re.test(key)) return kind;
+  return "other";
+}
+
+/* The Writes cell: distinct notes written, by kind, in a fixed order. `0` is a
+ * measured nothing; the `—` that migrateHeader puts in older rows is an absent
+ * measurement, and the two must not look alike. */
+const KIND_LETTERS = { task: "T", finding: "F", research: "R", architecture: "A", decision: "D", product: "P", uncertainty: "U", context: "C", other: "O" };
+export function writesCell(byKind = {}) {
+  const parts = KINDS.filter((k) => byKind[k]).map((k) => `${KIND_LETTERS[k]}${byKind[k]}`);
+  return parts.length ? parts.join(" ") : "0";
+}
+
 /* ---------------------------------------------------------------- parsing */
 
 function readJsonl(file) {
@@ -431,7 +607,9 @@ function analyseRecords(records) {
  *
  * `shellFiles` / `shellReads` are reads parsed from Bash and PowerShell command
  * lines (shellReadPaths). They never enter `files` or `readFiles`: those are
- * reported by a file tool, these are inferred from text. */
+ * reported by a file tool, these are inferred from text. `shellWrites` is the
+ * same for writes (shellWritePaths), kept apart from `writes` for the same
+ * reason. */
 function emptyBucket() {
   return {
     files: new Map(),
@@ -443,7 +621,14 @@ function emptyBucket() {
     coverageSamples: 0,
     shellFiles: new Map(),
     shellReads: 0,
+    shellWrites: 0,
   };
+}
+
+/* Project-OS notes written, by either route: key -> Set of "tool" | "shell". */
+function noteWritten(written, key, via) {
+  if (!written.has(key)) written.set(key, new Set());
+  written.get(key).add(via);
 }
 
 function summarise(parsed) {
@@ -495,6 +680,7 @@ function summarise(parsed) {
    * the vault. PowerShell is a shell too — until 2026-10-13 only Bash was
    * looked at, and a session reading through PowerShell was invisible twice. */
   let bashVaultTouches = 0;
+  const written = new Map();
 
   for (const call of parsed.calls) {
     const intent = toolIntent(call.name);
@@ -507,6 +693,13 @@ function summarise(parsed) {
         if (!cat || !buckets[cat]) continue;
         buckets[cat].shellReads++;
         buckets[cat].shellFiles.set(resolved.key, (buckets[cat].shellFiles.get(resolved.key) ?? 0) + 1);
+      }
+      for (const raw of shellWritePaths(command)) {
+        const resolved = resolvePath(raw);
+        const cat = categorize(resolved, "write");
+        if (!cat || !buckets[cat]) continue;
+        buckets[cat].shellWrites++;
+        if (cat === "project") noteWritten(written, resolved.key, "shell");
       }
     }
     if (intent === "other") continue;
@@ -534,8 +727,10 @@ function summarise(parsed) {
       if (intent === "read") {
         bucket.reads++;
         bucket.readFiles.set(resolved.key, (bucket.readFiles.get(resolved.key) ?? 0) + 1);
-      } else if (intent === "write") bucket.writes++;
-      else if (intent === "search") bucket.searches++;
+      } else if (intent === "write") {
+        bucket.writes++;
+        if (cat === "project") noteWritten(written, resolved.key, "tool");
+      } else if (intent === "search") bucket.searches++;
 
       // Only the native Read reports how much of the file it pulled in.
       if (intent === "read") {
@@ -557,7 +752,24 @@ function summarise(parsed) {
     unscopedSearches,
     foreignNotes: [...foreignNotes],
     bashVaultTouches,
+    written,
   };
+}
+
+/* The Project-OS notes a session wrote, each with its kind and the route that
+ * wrote it, and the count of distinct notes per kind — files, not edits:
+ * editing one Task ten times is still one Task written. */
+export function knowledgeWrites(written, kindOf = noteKind) {
+  const byKind = {};
+  const notes = [];
+  for (const [file, via] of written) {
+    const kind = kindOf(file);
+    if (!kind) continue;
+    byKind[kind] = (byKind[kind] ?? 0) + 1;
+    notes.push({ file, kind, via: [...via].sort() });
+  }
+  notes.sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind) || a.file.localeCompare(b.file));
+  return { byKind, notes };
 }
 
 function bucketStats(bucket) {
@@ -592,6 +804,7 @@ function bucketStats(bucket) {
 
   return {
     shellReads: bucket.shellReads,
+    shellWrites: bucket.shellWrites,
     shellFilesRead: bucket.shellFiles.size,
     shellRepeats,
     shellFiles,
@@ -675,6 +888,7 @@ function analyseSubagents(dir) {
       unscopedSearches: summary.unscopedSearches,
       foreignNotes: summary.foreignNotes,
       bashVaultTouches: summary.bashVaultTouches,
+      written: summary.written,
     });
   }
   return agents;
@@ -925,9 +1139,16 @@ function analyseSession(session) {
       bucket.coverageSamples += src.coverageSamples;
       for (const [file, count] of src.shellFiles) bucket.shellFiles.set(file, (bucket.shellFiles.get(file) ?? 0) + count);
       bucket.shellReads += src.shellReads;
+      bucket.shellWrites += src.shellWrites;
     }
     merged[cat] = bucketStats(bucket);
   }
+
+  const written = new Map();
+  for (const source of [summary.written, ...subagents.map((a) => a.written)]) {
+    for (const [file, via] of source ?? []) for (const v of via) noteWritten(written, file, v);
+  }
+  const knowledge = knowledgeWrites(written);
 
   const subUsage = subagents.reduce(
     (acc, a) => ({
@@ -968,11 +1189,13 @@ function analyseSession(session) {
       p95: Math.round(percentile(loads, 95)),
     },
     buckets: merged,
+    writesByKind: knowledge.byKind,
+    writtenNotes: knowledge.notes,
     unscopedSearches,
     foreignNotes,
     cache: analyseCache(summary.cacheSeries),
     budget: analyseBudget(session.sessionId),
-    subagents: subagents.map(({ buckets, ...rest }) => rest),
+    subagents: subagents.map(({ buckets, written, ...rest }) => rest),
     touchedVault: vaultTouches > 0 || bashVaultTouches > 0,
     /* Kept apart from touchedVault because the report needs to tell "traversal
      * measured" from "session recognised by its command line": in the second
@@ -1075,13 +1298,25 @@ function report(sessions) {
 
     /* Printed only when the shell read something: a block of zeros on every
      * file-tool session would be the line the eye learns to skip. */
-    const shellCats = ["governance", "project", "maintenance"].filter((cat) => s.buckets[cat]?.shellReads);
+    const shellCats = ["governance", "project", "maintenance"].filter((cat) => s.buckets[cat]?.shellReads || s.buckets[cat]?.shellWrites);
     if (shellCats.length) {
-      console.log("  Shell reads (parsed from Bash/PowerShell command lines — heuristic, not in Files or Re-read)");
+      console.log("  Shell reads and writes (parsed from Bash/PowerShell command lines — heuristic, not in Files or Re-read)");
       for (const cat of shellCats) {
         const b = s.buckets[cat];
-        console.log(`    ${cat.padEnd(16)} ${String(b.shellFilesRead).padStart(5)} files ${String(b.shellReads).padStart(6)} reads ${String(b.shellRepeats).padStart(6)} repeats`);
+        console.log(`    ${cat.padEnd(16)} ${String(b.shellFilesRead).padStart(5)} files ${String(b.shellReads).padStart(6)} reads ${String(b.shellRepeats).padStart(6)} repeats ${String(b.shellWrites).padStart(6)} writes`);
       }
+      console.log("");
+    }
+
+    /* Printed only when the session wrote a project note: the question is what
+     * kind of knowledge grew, and a Task-only line, session after session, is
+     * the pattern this block exists to make visible. */
+    if (s.writtenNotes?.length) {
+      console.log(`  Knowledge written (Project-OS notes, distinct files)   ${writesCell(s.writesByKind)}`);
+      for (const w of s.writtenNotes.slice(0, 12)) {
+        console.log(`    ${w.kind.padEnd(13)} ${w.file}${w.via.includes("shell") ? "   (shell)" : ""}`);
+      }
+      if (s.writtenNotes.length > 12) console.log(`    ... and ${s.writtenNotes.length - 12} more`);
       console.log("");
     }
 
@@ -1199,8 +1434,14 @@ Shell is the count of distinct governance and project files read through Bash or
 \`Get-Content\`…), parsed from the command line. It is a heuristic and is kept apart from Files and Re-read,
 which come from file tools only. Rows written before 2026-10-13 predate it.
 
-| Session | Ended | Requests | Output | Context peak | Mean | p95 | Notes | Files | Re-read | Coverage | Hit% | Breaks | Reproc | Label | Shell |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+Writes is the count of distinct Project-OS notes the session wrote, by kind: T task or epic, F finding,
+R research, A architecture, D decision, P product, U uncertainty ledger, C Current Context and its folder,
+O any other note. It counts file-tool writes and writes parsed from shell command lines (\`>\`, \`sed -i\`,
+\`Set-Content\`, a script's \`open(…, 'w')\`…). \`0\` means nothing was written; rows written before os-v9
+(2026-10-26) predate the column and read \`—\`.
+
+| Session | Ended | Requests | Output | Context peak | Mean | p95 | Notes | Files | Re-read | Coverage | Hit% | Breaks | Reproc | Label | Shell | Writes |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 `;
 
 /* The header line and its separator, taken from LOG_HEADER so the two can
@@ -1302,7 +1543,7 @@ function writeSnapshot(sessions) {
     const reproc = s.cache ? n(s.cache.tokensReprocessed) : "—";
     const shell = gov.shellFilesRead + proj.shellFilesRead;
 
-    const row = `| ${short} | ${ended} | ${s.requests} | ${n(out)} | ${n(s.context.peak)} | ${n(s.context.mean)} | ${n(s.context.p95)} | ${notes} | ${distinct} | ${reads ? Math.round((repeats / reads) * 100) + "%" : "—"} | ${coverage} | ${hit} | ${breaks} | ${reproc} | ${LABEL ?? "—"} | ${shell} |`;
+    const row = `| ${short} | ${ended} | ${s.requests} | ${n(out)} | ${n(s.context.peak)} | ${n(s.context.mean)} | ${n(s.context.p95)} | ${notes} | ${distinct} | ${reads ? Math.round((repeats / reads) * 100) + "%" : "—"} | ${coverage} | ${hit} | ${breaks} | ${reproc} | ${LABEL ?? "—"} | ${shell} | ${writesCell(s.writesByKind)} |`;
 
     const result = upsertRow(text, short, row);
     text = result.text;

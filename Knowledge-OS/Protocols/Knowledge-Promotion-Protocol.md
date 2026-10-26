@@ -9,7 +9,12 @@ Promote durable project knowledge discovered during work into the appropriate kn
 
 ## 1. Detect
 
-After completing meaningful work, inspect the result for information that may have lasting project value.
+After work that established project facts — implementation, investigation, answering someone's questions, review — inspect the result for information that may have lasting project value. [[Context-Selection-Protocol]] §10 calls this protocol; the closing ritual in [[Project-OS/06-AI/AI]] checks that it ran.
+
+Inspect the session's record, not its memory of itself:
+
+- the retrieval budget's `targetFacts` — what the work set out to establish;
+- what the work sent or drafted for people outside the vault — answers, tracker comments, review notes, pull request descriptions. Each one says something the work found out; an answer that went outside is not a record of it.
 
 Check whether the information:
 
@@ -25,11 +30,14 @@ Use [[Rules/Promotion-Rules]].
 
 Select the smallest appropriate knowledge type:
 
+- a fact only the current Task needs → the Task's `## Discoveries`
 - technical finding → `Research`
 - accepted choice → `Decision`
 - persistent system structure → `Architecture`
 - future capability → `Idea`
 - other project knowledge → appropriate existing type
+
+A project may keep its own hand-over documents outside the vault — setup steps for testers, a decision log next to the code. When the project's Development note names one, a fact meant for that document's reader goes there, and the Task links to it rather than copying it.
 
 Use [[Schema/Knowledge-Types]].
 

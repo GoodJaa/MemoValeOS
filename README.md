@@ -260,11 +260,13 @@ node "Knowledge-OS/Tools/mv.cjs" doctor
    /mv-init     — новый проект: Project Initialization Protocol
    /mv-survey [entry-points|budgeted] — существующий репозиторий: Repository Survey Protocol
    /mv-deploy   — развернуть хранилище в Obsidian и подключить MCP
-   /mv-resume   — с чего продолжить: задача этой рабочей копии или следующая свободная
+   /mv-resume [<ключ>] [<запрос>] — с чего продолжить: задача этой рабочей копии, следующая
+                  свободная или задача по ключу; текст после ключа — запрос на сессию
                   (в т.ч. после разрыва связи с Obsidian)
    /mv-note <что> — записать Finding: дешёвый датированный факт в одну строку (где — связью `affects::`)
-   /mv-close    — ритуал закрытия сессии: два вопроса → Finding, закрытие задачи и эпика,
-                  передача работы (Progress задачи, общий Current Context), снимок метрик
+   /mv-close    — ритуал закрытия сессии: опись того, что сессия установила, и где это
+                  записано, затем Finding; закрытие задачи и эпика, передача работы
+                  (Progress задачи, общий Current Context), снимок метрик
    /mv-metrics [флаги context-metrics.mjs] — метрики сессии как есть
    /mv-trend    — тренд по накопленному логу метрик
    /mv-check    — проверка схемы (validate-vault.mjs)

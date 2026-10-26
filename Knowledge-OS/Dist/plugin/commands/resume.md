@@ -1,6 +1,6 @@
 ---
 description: Resume work — after a normal session gap, or after reconnecting from an Obsidian/MCP disconnection; with a key, on that Task
-argument-hint: "[<task key>]"
+argument-hint: "[<task key>] [<request>]"
 allowed-tools: Read, Glob, Grep, Write(.claude/budget.json), Bash(node:*)
 ---
 

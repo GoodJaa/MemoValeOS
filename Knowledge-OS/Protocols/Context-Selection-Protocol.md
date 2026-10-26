@@ -32,6 +32,7 @@ Then read against that budget.
 
 - Reading beyond the budget requires a reason tied to the Task.
 - A target fact that cannot be found becomes an uncertainty, not a guess.
+- A target fact that is found becomes a record, not only an answer. When it is specific to this project and took reading code, data or a tracker to establish, write it into the Task's `## Discoveries` (add the section if the note has none) no later than it leaves the session — in an answer, a tracker comment, a draft for a person — and before the session closes in any case. An answer outside the vault is not a record: the next session reads neither the tracker nor this chat. Whether the fact belongs higher than the Task is §10's question.
 - If the budget was wrong, restate it rather than drifting.
 
 A stop condition declared in advance is a boundary. A stop condition judged afterwards is a preference.
@@ -51,7 +52,7 @@ Write the budget to `.claude/budget.json` at the start of the Task, before the f
 
 `task` is the Task's file name without `.md` — that is what lets a stale budget be recognised. `entryPoints` are paths relative to the project root, the directory holding `.claude/`; a directory covers everything under it. When the vault is embedded in a project, vault paths therefore carry its folder (`MemoValeOS/Project-OS/…` above); when the vault is the repository root, they do not. A `PreToolUse` hook reads this file on every `Read`/`Grep`/`Glob` and records whether a budget existed and whether the path was inside it; `context-metrics.mjs` reports the totals. Nothing is blocked — the log exists to find out how often the discipline actually holds, which was unmeasured through the first twelve Tasks.
 
-Rewrite the file when the budget legitimately changes, rather than leaving a stale one in place: a budget from the previous Task scores this Task's reads against a boundary drawn for different work. The `task` field is what makes a stale budget visible.
+Rewrite the file when the budget legitimately changes, rather than leaving a stale one in place: a budget from the previous Task scores this Task's reads against a boundary drawn for different work. The `task` field is what makes a stale budget visible. Within the same Task, keep the target facts already declared and add the new ones: the closing ritual reads `targetFacts` as the list of what the session set out to establish, and a fact dropped from the file is a fact nobody checks was recorded.
 
 **Delete the file when the Task closes.** A budget outlives the work it was drawn for otherwise, and the next session's reads are scored against a boundary that no longer means anything — which has happened: a budget naming a Task already `done` scored eighteen of nineteen reads as outside it. The file is a per-session artifact, gitignored alongside the audit log, so removing it loses nothing; an absent budget is recorded honestly as `undeclared`, while a stale one is recorded as a violation that did not occur. `/mv-close` does this as part of the closing ritual, and `context-metrics.mjs` reports a budget whose Task is already `done` when it was not.
 
@@ -138,6 +139,8 @@ Stop context expansion when Claude can:
 
 Do not continue loading related knowledge without a task-relevant reason.
 
+Stopping the reading does not end the work with what was read: the facts the work establishes are recorded per §10.
+
 ## 8. Conflict
 
 If relevant sources conflict:
@@ -156,8 +159,16 @@ Do not load:
 - generic knowledge already known to Claude;
 - historical or archived knowledge without a relevant reason.
 
+## 10. Record
+
+Work that established project facts ends with recording them, whatever kind of work it was: implementation, investigation, answering someone's questions, review. A change in the code or an answer in the tracker is not the record.
+
+1. Facts only this Task needs are already in its `## Discoveries` (§2).
+2. For the rest — a fact others will ask about again, how the system behaves, a choice that binds later work — run [[Knowledge-Promotion-Protocol]]. Research and changes to Architecture or a Decision are proposed to the human, not written silently; a fact that contradicts a note is §8.
+3. The closing ritual in [[Project-OS/06-AI/AI]] checks this against the budget's `targetFacts` and against what the session sent outside the vault. It catches what was missed; it is not the place to start.
+
 ## Principle
 
-Task → minimal context → work → evidence → knowledge update.
+Task → minimal context → work → evidence → knowledge update. §10 is the last step.
 
 Context is pulled by the Task, not pushed onto it.

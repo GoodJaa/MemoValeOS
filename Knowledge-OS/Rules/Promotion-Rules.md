@@ -22,6 +22,7 @@ Promote a discovery when it:
 Use the smallest appropriate knowledge type.
 
 - implementation outcome → update the current Task when temporary;
+- a fact the work established that only the current Task needs → the Task's `## Discoveries`;
 - reusable technical finding → Research;
 - accepted choice → Decision;
 - persistent system structure → Architecture;
@@ -29,6 +30,10 @@ Use the smallest appropriate knowledge type.
 - something worth capturing right now, not yet worth writing up → `Finding`.
 
 A Task result is not a separate knowledge type.
+
+An answer sent outside the vault — a tracker comment, a chat reply, a review note — is not a record of what it says. The tracker is not the vault: the next session does not read it. What such an answer established is recorded here too, per the targets above.
+
+A Task note is where facts are captured first, not where they stay. What will outlive the Task — how the system behaves, a contract, a binding choice — moves up when the Task closes (the closing ritual's Part 2), and the Task keeps a link to it.
 
 Follow [[Schema/Knowledge-Types]] and [[Schema/Knowledge-Lifecycle]].
 

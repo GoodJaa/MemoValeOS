@@ -6,7 +6,17 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { analyseCache, bashTouchesVault, migrateHeader, shellReadPaths, upsertRow } from "./context-metrics.mjs";
+import {
+  analyseCache,
+  bashTouchesVault,
+  knowledgeWrites,
+  migrateHeader,
+  noteKind,
+  shellReadPaths,
+  shellWritePaths,
+  upsertRow,
+  writesCell,
+} from "./context-metrics.mjs";
 
 const VAULT_SRC = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
@@ -438,4 +448,127 @@ test("a missing or non-string command reads nothing", () => {
   assert.deepEqual(shellReadPaths(undefined), []);
   assert.deepEqual(shellReadPaths(""), []);
   assert.deepEqual(shellReadPaths({ command: "cat Project-OS/a.md" }), []);
+});
+
+/* ------------------------------------------ the files a shell command writes */
+
+/* On the owner's working project a session edited Current Context and a Task
+ * note through python, and the metrics saw no write at all. These pin what
+ * counts as a write: as with reads, a missed one is tolerable, an invented one
+ * is not. */
+
+test("a redirection writes its target, and stderr or /dev/null does not count", () => {
+  assert.deepEqual(shellWritePaths("echo x > Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("echo x >>Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("node t.mjs 2>Project-OS/err.md", "V"), []);
+  assert.deepEqual(shellWritePaths("cat Project-OS/a.md > /dev/null 2>&1", "V"), []);
+});
+
+test("a heredoc writes where it is redirected, and its body is not read as commands", () => {
+  const command = ["cat <<'EOF' > MemoValeOS/Project-OS/T1.md", "line > Project-OS/b.md", "tee Project-OS/c.md", "EOF", "echo done"].join("\n");
+  assert.deepEqual(shellWritePaths(command, "MemoValeOS"), ["Project-OS/T1.md"]);
+  // A here-string is not a heredoc: nothing after it is skipped.
+  assert.deepEqual(shellWritePaths("cat <<< hi\necho x > Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+});
+
+test("tee, sed -i and the destination of a copy are writes; their sources are not", () => {
+  assert.deepEqual(shellWritePaths("echo x | tee -a Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("sed -i 's/a/b/' Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("sed -i -e 's/a/b/' Project-OS/a.md Project-OS/b.md", "V"), [
+    "Project-OS/a.md",
+    "Project-OS/b.md",
+  ]);
+  assert.deepEqual(shellWritePaths("sed -n '1,5p' Project-OS/a.md", "V"), []);
+  assert.deepEqual(shellWritePaths("cp /tmp/x.md Project-OS/a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("cp -t Project-OS/ a.md b.md", "V"), []);
+});
+
+test("PowerShell writers count, with a named and with a positional path", () => {
+  assert.deepEqual(shellWritePaths("Set-Content -Path Project-OS\\a.md -Value x -Encoding utf8", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths('"x" | Out-File Project-OS\\a.md', "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("Copy-Item x.md -Destination Project-OS\\a.md", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("Get-Content Project-OS\\a.md", "V"), []);
+});
+
+test("a script that opens a literal path for writing writes it, anchored where the shell cd-ed", () => {
+  const python = ["cd /d/work/Host && python - <<'EOF'", "p = open('MemoValeOS/Project-OS/T1.md', 'w', encoding='utf-8')", "EOF"].join("\n");
+  assert.deepEqual(shellWritePaths(python, "MemoValeOS"), ["d:/work/Host/MemoValeOS/Project-OS/T1.md"]);
+  assert.deepEqual(shellWritePaths("python -c \"Path('Project-OS/a.md').write_text(s)\"", "V"), ["Project-OS/a.md"]);
+  assert.deepEqual(shellWritePaths("node -e \"fs.writeFileSync('Project-OS/a.md', s)\"", "V"), ["Project-OS/a.md"]);
+  // Opened for reading, or through a variable: nothing claimed.
+  assert.deepEqual(shellWritePaths("python -c \"open('Project-OS/a.md').read()\"", "V"), []);
+  assert.deepEqual(shellWritePaths("python -c \"open(p, 'w')\"", "V"), []);
+});
+
+test("read verbs and a missing command write nothing", () => {
+  assert.deepEqual(shellWritePaths("cat Project-OS/a.md | head -5", "V"), []);
+  assert.deepEqual(shellWritePaths("git commit -F - <<'EOF'\nPart 1 > Project-OS/a.md\nEOF", "V"), []);
+  assert.deepEqual(shellWritePaths(undefined), []);
+  assert.deepEqual(shellWritePaths(""), []);
+});
+
+/* ------------------------------------------------ what kind of note was written */
+
+const typeOf = (types) => (key) => types[key] ?? null;
+
+test("a note's kind comes from its own type", () => {
+  const types = {
+    "Project-OS/03-Development/Tasks/T1.md": "task",
+    "Project-OS/03-Development/Epics/E1.md": "epic",
+    "Project-OS/02-Architecture/Storage.md": "architecture",
+    "Project-OS/04-Research/Cache.md": "research",
+    "Project-OS/03-Development/Development.md": "index",
+  };
+  const kind = (k) => noteKind(k, typeOf(types));
+  assert.equal(kind("Project-OS/03-Development/Tasks/T1.md"), "task");
+  assert.equal(kind("Project-OS/03-Development/Epics/E1.md"), "task");
+  assert.equal(kind("Project-OS/02-Architecture/Storage.md"), "architecture");
+  assert.equal(kind("Project-OS/04-Research/Cache.md"), "research");
+  // An index is not the knowledge it routes to.
+  assert.equal(kind("Project-OS/03-Development/Development.md"), "other");
+});
+
+test("the ledger and Current Context are found by path, a vanished note by its folder", () => {
+  const kind = (k) => noteKind(k, typeOf({ "Project-OS/04-Research/Uncertainties.md": "index" }));
+  assert.equal(kind("Project-OS/04-Research/Uncertainties.md"), "uncertainty");
+  assert.equal(kind("Project-OS/06-AI/Context/Current-Context.md"), "context");
+  assert.equal(kind("Project-OS/03-Development/Findings/Gone.md"), "finding");
+  assert.equal(kind("Project-OS/05-Decisions/ADR-009.md"), "decision");
+  assert.equal(kind("Project-OS/Somewhere/Else.md"), "other");
+});
+
+test("templates, files outside Project-OS and non-notes are not knowledge written", () => {
+  const kind = (k) => noteKind(k, typeOf({}));
+  assert.equal(kind("Project-OS/Templates/Task.md"), null);
+  assert.equal(kind("Knowledge-OS/Rules/Brain-Rules.md"), null);
+  assert.equal(kind("Project-OS/03-Development/Backlog.base"), null);
+});
+
+test("writes are counted by distinct note and kind, and the cell keeps a fixed order", () => {
+  const written = new Map([
+    ["Project-OS/03-Development/Tasks/T1.md", new Set(["tool", "shell"])],
+    ["Project-OS/06-AI/Context/Current-Context.md", new Set(["shell"])],
+    ["Project-OS/03-Development/Findings/F.md", new Set(["tool"])],
+  ]);
+  const kinds = { "Project-OS/03-Development/Tasks/T1.md": "task", "Project-OS/03-Development/Findings/F.md": "finding" };
+  const { byKind, notes } = knowledgeWrites(written, (k) => noteKind(k, typeOf(kinds)));
+  assert.deepEqual(byKind, { task: 1, context: 1, finding: 1 });
+  assert.deepEqual(notes[0], { file: "Project-OS/03-Development/Tasks/T1.md", kind: "task", via: ["shell", "tool"] });
+  assert.equal(writesCell(byKind), "T1 F1 C1");
+  // A measured nothing is 0; the dash belongs to rows that predate the column.
+  assert.equal(writesCell({}), "0");
+});
+
+test("a 16-column log gains the Writes column, its rows read — rather than 0", () => {
+  const H16 =
+    "| Session | Ended | Requests | Output | Context peak | Mean | p95 | Notes | Files | Re-read | Coverage | Hit% | Breaks | Reproc | Label | Shell |";
+  const before = logWith(H16, "| abc12345 | 2026-10-26 06:34 | 124 | 1 | 2 | 3 | 4 | 95 | 5 | 0% | 80% | 99% | 0 | 0 | task | 15 |");
+  const after = migrateHeader(before);
+  assert.equal(after.migrated, true);
+  const lines = after.text.split("\n");
+  assert.ok(lines[2].endsWith("| Shell | Writes |"));
+  const cells = lines[4].split("|").slice(1, -1).map((c) => c.trim());
+  assert.equal(cells.length, 17);
+  assert.equal(cells[15], "15");
+  assert.equal(cells[16], "—");
 });

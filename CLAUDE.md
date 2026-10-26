@@ -31,7 +31,7 @@ The repository is the implementation evidence. If code conflicts with project kn
 
 ## Knowledge Updates
 
-After implementation: update only knowledge affected by the work, promote reusable discoveries when appropriate, and do not rewrite unrelated Project OS files.
+After any work that established project facts — implementation, investigation, answering someone's questions, review — record them per [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2 and §10: an answer outside the vault is not a record. Update only knowledge affected by the work, and do not rewrite unrelated Project OS files.
 
 ## Prime Directive
 

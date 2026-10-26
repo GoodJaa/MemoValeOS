@@ -95,7 +95,24 @@ Claude Code пишет **одну строку на блок контента** 
 - `shellReadPaths(command)` разбирает строку на сегменты (`&& || ; |`, перевод строки) с учётом кавычек и у глаголов чтения (`cat head tail less more sed awk grep egrep rg wc type`, `Get-Content`/`gc`, `Select-String`/`sls`) берёт аргументы, похожие на путь. Первый позиционный аргумент `sed`/`grep`/`rg`/`Select-String` — шаблон, если шаблон не передан опцией (`-e`, `-Pattern`). Числовое значение после опции (`head -n 20`) и цель перенаправления пропускаются. `cd`/`Set-Location` задают каталог для относительных путей; путь, начинающийся с имени хранилища, привязывается к хранилищу; `/g/…` из Git Bash становится `g:/…`.
 - Найденные пути идут в бакеты как чтения, но **в отдельные счётчики**: `shellFiles`, `shellReads`; `bucketStats` выдаёт `shellReads`, `shellFilesRead`, `shellRepeats`, `shellFiles`. В `Files`, `Re-read` и эффективность они не попадают: это эвристика, а те показатели — от файловых инструментов. Пропустить чтение разбор может (переменная, подстановка, глоб), выдумать — нет: каждый путь написан в команде.
 
-Отчёт печатает блок `Shell reads`, только если оболочка что-то прочитала, и `NOTE vault reached only through the shell … see Shell reads` (`vaultTouchedOnlyViaBash`), если файловые инструменты хранилища не касались.
+Отчёт печатает блок `Shell reads and writes`, только если оболочка что-то прочитала или записала, и `NOTE vault reached only through the shell … see Shell reads` (`vaultTouchedOnlyViaBash`), если файловые инструменты хранилища не касались.
+
+### Записи через оболочку и прирост знания (os-v9)
+
+До os-v9 запись считалась, только если её сделал файловый инструмент, и записи не делились по видам заметок. На рабочем проекте владельца часть правок Current Context и заметки задачи шла через python. Метрика, которая могла показать, что ни одна сессия не писала Architecture и Research, этих записей не видела вовсе.
+
+- `shellWritePaths(command)` — пара к `shellReadPaths` с тем же разбором на сегменты, `cd` и привязкой путей. Записью считаются:
+  - перенаправление `>`/`>>` (не `2>`, не `/dev/null`);
+  - `tee`;
+  - `sed -i`;
+  - назначение `cp`/`mv`, `Copy-Item`/`Move-Item` (`-Destination`);
+  - `Set-Content`/`Add-Content`/`Out-File` (`-Path`, `-FilePath` или первый позиционный аргумент);
+  - буквальный путь, который скрипт открывает на запись: `open(p, 'w')` и `Path(p).write_text(` у Python, `writeFileSync(p` у Node. Эти формы ищутся по всей команде, потому что живут как раз в heredoc.
+- Тело heredoc — текст, а не команды, и его строки пропускаются. `<<<` (here-string) heredoc не считается. `cp -t <каталог>` не даёт записи: ни один путь в строке не назван тем, что записано. Пропустить запись разбор может (переменная, путь, собранный в скрипте), выдумать — нет.
+- Найденные пути идут в бакеты счётчиком `shellWrites`, отдельно от `writes` файловых инструментов, по той же причине, что `shellReads`.
+- **Вид заметки — `noteKind(key)`.** Считаются только `.md` под `Project-OS/`, кроме `Templates/`. Вид берётся из собственного `type` заметки в момент замера: `task` и `epic` → task, `finding`, `research`, `architecture`, `decision`, `product`, всё прочее (включая `index`) → other. Реестр неопределённостей узнаётся по `uncertaint` в пути, как в валидаторе, а Current Context — по папке `Context/`: оба индексы и иначе ушли бы в other. Заметка, удалённая или переименованная после сессии, получает вид по папке.
+- `knowledgeWrites` сводит записи обоими путями в `writesByKind` (число **разных** заметок по виду: десять правок одной задачи — одна задача) и `writtenNotes: [{file, kind, via: ["shell"|"tool"]}]`. Субагенты складываются с основной нитью.
+- Отчёт печатает блок `Knowledge written`, только если сессия записала заметку проекта.
 
 Транскрипты до `a56b29a` (2026-09-17) называют деревья `Knowledge OS/` и `Project OS/`; `resolvePath` приводит старые имена к новым, иначе перемер старой сессии давал ноль чтений знания. Перемер журнала проекта-носителя с этим разбором — его `Metrics/remeasure-2026-10-13.md`.
 
@@ -146,6 +163,7 @@ Claude Code пишет **одну строку на блок контента** 
 | `Hit%` / `Breaks` / `Reproc` | `hitRate`, `prefixBreaks`, `tokensReprocessed` |
 | `Label` | `--label` или `—` |
 | `Shell` | `shellFilesRead` governance + project — эвристика по командной строке; строки до 2026-10-13 — `—` |
+| `Writes` | `writesByKind` одной ячейкой: `T` задача или эпик, `F` находка, `R` исследование, `A` архитектура, `D` решение, `P` продукт, `U` реестр, `C` Current Context, `O` прочее, в этом порядке, только ненулевые (`T2 F1 C1`). `0` — измеренный ноль; строки до os-v9 — `—` |
 
 Схема дампа сессии (`Metrics/sessions/<id>.json` — данные экземпляра, в доставку не входят):
 
@@ -159,7 +177,10 @@ Claude Code пишет **одну строку на блок контента** 
              { distinctFiles, filesRead, touches, reads, writes, searches,
                repeats, repeatedFiles, coverage|null,
                top: [{file, count}], files: [{file, touches, reads}],
-               shellReads, shellFilesRead, shellRepeats, shellFiles: [{file, reads}] } },
+               shellReads, shellWrites, shellFilesRead, shellRepeats, shellFiles: [{file, reads}] } },
+  writesByKind: { task?, finding?, research?, architecture?, decision?, product?,
+                  uncertainty?, context?, other? },
+  writtenNotes: [{ file, kind, via: ["shell"|"tool"] }],
   unscopedSearches, foreignNotes[],
   cache:  { requests, hitRate, creationShare, readToCreateRatio|null, prefixBreaks,
             tokensReprocessed, byCause{ttlExpiry,apiError,modelSwitch,unattributed},
@@ -253,5 +274,5 @@ Session ad79c9d1-abca-42e7-9d30-2102f93b8145
 - **Новая метрика в отчёте** — считать в `summarise`/`analyseSession`, печатать в `report`; если она идёт в журнал — добавить столбец в `LOG_HEADER` (заголовок таблицы объявлен один раз; `HEADER_ROW` и миграция берутся из него), и `migrateHeader` сам дополнит старые строки `—`. Обновить пояснения в `LOG_HEADER`.
 - **Новый инструмент или MCP-метод** — регулярные выражения в `toolIntent()` и, если у него новый ключ пути, `PATH_KEYS`.
 - **Новый управляемый каталог** — `categorize()` и `VAULT_DIR_NAMES` вместе (комментарий прямо требует держать их рядом).
-- **Тесты** — [[Knowledge-OS/Tools/context-metrics.test.mjs]] импортирует экспортированные `analyseCache`, `bashTouchesVault`, `shellReadPaths`, `migrateHeader`, `upsertRow` (`isTaskDone` тоже экспортирована, но тестом пока не покрыта); модуль не запускает `main()` при импорте (проверка `process.argv[1]` против собственного пути). Новую чистую функцию экспортировать и покрыть так же. См. [[Docs/06-Tooling/06-6-Tests-and-Fixtures]].
+- **Тесты** — [[Knowledge-OS/Tools/context-metrics.test.mjs]] импортирует экспортированные `analyseCache`, `bashTouchesVault`, `shellReadPaths`, `shellWritePaths`, `noteKind`, `knowledgeWrites`, `writesCell`, `migrateHeader`, `upsertRow` (`isTaskDone` тоже экспортирована, но тестом пока не покрыта); модуль не запускает `main()` при импорте (проверка `process.argv[1]` против собственного пути). Новую чистую функцию экспортировать и покрыть так же. См. [[Docs/06-Tooling/06-6-Tests-and-Fixtures]].
 - Запись в [[CHANGELOG]]; если меняется смысл столбца — отметить, начиная с какой даты строки несравнимы, как это сделано для `Hit%`/`Breaks`/`Reproc`.
