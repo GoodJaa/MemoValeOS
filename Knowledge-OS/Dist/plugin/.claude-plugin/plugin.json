@@ -1,0 +1,9 @@
+{
+  "name": "mv",
+  "version": "1.0.0",
+  "description": "MemoValeOS commands and the reading-budget hook. The commands' text is read from the project's vault (Knowledge-OS/Dist/commands/), so plugin and vault cannot disagree.",
+  "author": {
+    "name": "MemoValeOS"
+  },
+  "license": "MIT"
+}

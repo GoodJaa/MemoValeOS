@@ -24,10 +24,10 @@
  * standalone clone.
  */
 import { readdirSync, readFileSync, statSync , existsSync } from "node:fs";
-import { join, sep, dirname, relative } from "node:path";
+import { join, sep, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { load as loadYaml } from "js-yaml";
+import { load as loadYaml } from "./vendor/js-yaml.mjs"; // vendored, see validate-vault.mjs
 
 const VAULT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 /* The repository root is the nearest ancestor holding `.git`, starting at the
@@ -44,7 +44,18 @@ function findRepoRoot(start) {
   }
 }
 
-const REPO = findRepoRoot(VAULT);
+/* The install record names the project root, as in validate-vault.mjs: with
+ * it, a vault that has its own .git still asks the project's repository. */
+function projectRootFromRecord() {
+  try {
+    const r = JSON.parse(readFileSync(join(VAULT, ".mvos", "install.json"), "utf8"));
+    return typeof r?.projectRoot === "string" ? resolve(VAULT, r.projectRoot) : null;
+  } catch {
+    return null;
+  }
+}
+
+const REPO = findRepoRoot(projectRootFromRecord() ?? VAULT);
 const KNOWLEDGE_ROOTS = ["Knowledge-OS", "Project-OS"];
 // Keep in step with NEVER_WALK in validate-vault.mjs: a fixture vault walked
 // as if it were this one reports test data as the project's own knowledge.

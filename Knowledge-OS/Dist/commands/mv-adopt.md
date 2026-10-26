@@ -1,34 +1,37 @@
 ---
-description: Deploy MemoValeOS files into this project's root — commands, hook, settings, CLAUDE.md redirect
-argument-hint: "[--apply] [--only commands,hooks,settings,claude-md,gitignore]"
-allowed-tools: Read, Bash(node:*), Bash(git:*), Edit, Write
+description: Install MemoValeOS into this project — personal (plugin, no tracked file changes) or team (copies) — or take it out; you plan, the owner applies
+argument-hint: "[--local|--team] [--uninstall] [--only <classes>]"
+allowed-tools: Read, Bash(node:*), Bash(git:*)
 ---
 
-Deploy the OS layer's *files* into the project root that hosts this vault. This is not knowledge bootstrap — `/mv-init` and `/mv-survey` do that, and they assume the files this command puts in place.
+Install the OS layer into the project root that hosts this vault, or remove it. This is not knowledge bootstrap — `/mv-init` and `/mv-survey` do that, and they assume what this command puts in place.
 
 Read `Knowledge-OS/Protocols/Deployment-Protocol.md` in full before acting. Its wording governs what counts as compliant here; do not follow it from memory.
 
-## Run the planner first, always
+## Plan, always — and only plan
 
 ```
-node "<vault-root>/Knowledge-OS/Tools/adopt.mjs"
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" adopt $ARGUMENTS
 ```
 
-This writes nothing. It prints a census of what the target already has and a numbered list of what it proposes to change. Relay that list **verbatim** — the human decides from it, so summarizing it away defeats the step.
+This writes nothing. It prints which root and which mode it took and why, a census of what the project already has, and a numbered list of what it proposes. Relay that output **verbatim** — the human decides from it, and a summary is not the list.
 
-## Then apply, per class, only what was approved
+If it refuses (a vault with its own `.git` inside another repository, or no mode chosen), relay the refusal and ask which option the human wants. Do not choose one.
 
-```
-node "<vault-root>/Knowledge-OS/Tools/adopt.mjs" --apply --only <classes>
-```
+## Hand the apply to the owner
 
-Classes are `commands`, `hooks`, `settings`, `claude-md`, `gitignore`. Ask about each class the planner listed as changed, separately. A single blanket "yes" to everything is not the approval this command needs: the classes carry different risk, and `settings` and `claude-md` modify files the project already owns.
+Do not run `--apply` yourself. The plan ends with the exact command that carries it out — give it to the owner to run in their terminal, or as `! <command>` in this session. Installing writes into `.claude/` and `.git/`, which are protected paths for an assistant, and the personal install also needs `claude plugin …`, which changes Claude Code's own configuration. Those are the owner's to do, and the plan prints them ready to paste.
 
-Do not pass `--apply` without naming `--only`, unless the human approved every listed class explicitly.
+The two modes, for the owner's choice:
+
+- `--local` — one person's install in a project the team owns. Nothing tracked changes: the commands come as the plugin `mv` (`/mv:check`, `/mv:close`…), the entry point is `.claude/rules/memovaleos.md`, and the vault and the budget files go into `.git/info/exclude`.
+- `--team` — the whole team uses the OS. Copies in `.claude/commands/` (`/mv-check`…), the hook in `.claude/settings.json`, a redirect in `CLAUDE.md`, lines in `.gitignore`.
+
+When the owner says it is done, re-run the plan: "Nothing to change" (or only the plugin step, until they run it) confirms it.
 
 ## The one step the script cannot finish
 
-If the target had its own `CLAUDE.md`, the script prepends the redirect and moves the original body, verbatim, to `Project-OS/Inbox/Adopted CLAUDE.md`. It stops there on purpose — deciding which of those instructions is a Decision, which is Architecture, and which is project convention is judgement, and the script has none.
+If a team install found the project's own `CLAUDE.md`, the script put the redirect above it, left its body in place, and copied it verbatim to `Project-OS/Inbox/Adopted CLAUDE.md`. Deciding which of those instructions is a Decision, which is Architecture, and which is project convention is judgement, and the script has none.
 
 That distribution is yours to propose:
 
@@ -39,16 +42,20 @@ That distribution is yours to propose:
 ## Then verify
 
 ```
-node "<vault-root>/Knowledge-OS/Tools/validate-vault.mjs"
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" adopt --verify
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" validate-vault
 ```
 
-Report `OK` or the exact failure list. Then point at the next step: `/mv-init` for a new project, `/mv-survey` for an existing codebase.
+Report both as printed. Then point at the next step: `/mv-init` for a new project, `/mv-survey` for an existing codebase.
+
+## Taking it out
+
+`/mv-adopt --uninstall` plans the removal: the hook entry before the hook file, the plugin before its marketplace, our blocks out of files the project owns, the install record last. Only what is provably ours goes; a file edited since install is refused without `--yes`. The vault itself is never removed. The owner applies it, as above.
 
 ## What this command must never do silently
 
-- Overwrite any file not named `mv-*`. The `mv-` prefix is a reserved namespace; everything else belongs to the host project.
-- Modify `.claude/agents/`. Those are the project's own.
-- Write a `settings.json` it could not parse. A file that cannot be read cannot be safely rewritten — the script refuses, and so do you.
-- Delete anything. There is no uninstall path.
-- Run `git add` or commit. Leave a dirty tree for the human to inspect, as `/mv-sync` does.
-- Touch `~/.claude/commands/`. A user-level copy is visible in every project and drifts from the repository at the first edit; `README.md` records what that cost once already.
+- Overwrite or remove any file not named `mv-*`, the hook, or `.claude/rules/memovaleos.md`, or any text outside our markers. Everything else belongs to the host project.
+- Modify `.claude/agents/`.
+- Write a `settings.json` it could not parse — the script refuses, and so do you.
+- Run `git add` or commit. Leave the tree for the human to inspect.
+- Touch `~/.claude/commands/`. A user-level copy is visible in every project and drifts from the repository at the first edit.

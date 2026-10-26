@@ -14,7 +14,7 @@ Deployment is already done. Skip straight to Verify below — do not attempt to 
 1. Look at the tools actually available in this session for anything whose name suggests an Obsidian MCP connection (containing `obsidian`, `execute_template`, or similar). Do not assume one exists just because it existed in a past session — check the current tool list.
    - If such a tool is present: tell the user it appears available, and ask for explicit confirmation before using it — it would write into the vault. Do not invoke it without that confirmation. After invoking it, still run Verify below; its actual effect is not guaranteed until checked.
    - If no such tool is present: say so plainly, and go straight to the manual path.
-2. Manual path: read this vault's `README.md`, section "Установка" (or "Installation"), and relay its steps to the user verbatim from the file — do not paraphrase from memory, since the exact plugin names and click paths matter. The steps cover: clone the repository (the vault arrives as plain files — there is no generator to run), enable the MCP Connector community plugin and the core `bases`/`properties` plugins (Dataview if typed relationships should be queryable), run `npm install` at the repository root, and validate.
+2. Manual path: read this vault's `README.md`, section "Установка" (or "Installation"), and relay its steps to the user verbatim from the file — do not paraphrase from memory, since the exact plugin names and click paths matter. The steps cover: clone the repository (the vault arrives as plain files — there is no generator to run), enable the MCP Connector community plugin and the core `bases`/`properties` plugins (Dataview if typed relationships should be queryable), and validate. Nothing needs `npm install`: the tools' one library is vendored.
 3. Wait for the user to confirm they've completed the manual steps (or for the MCP-driven attempt to finish) before continuing to Verify.
 
 ## Verify
@@ -22,7 +22,7 @@ Deployment is already done. Skip straight to Verify below — do not attempt to 
 Run:
 
 ```
-node "<vault-root>/Knowledge-OS/Tools/validate-vault.mjs"
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" validate-vault
 ```
 
 Report `OK` or the exact failure list — do not summarize errors away.

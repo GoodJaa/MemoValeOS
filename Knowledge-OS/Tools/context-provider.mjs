@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { load as loadYaml } from "js-yaml";
+import { load as loadYaml } from "./vendor/js-yaml.mjs"; // vendored, see validate-vault.mjs
 
 const PROTOCOL_VERSION = "1.0";
 const PROVIDER_ID = "memovale";

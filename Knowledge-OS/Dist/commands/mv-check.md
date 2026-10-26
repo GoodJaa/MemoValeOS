@@ -1,18 +1,18 @@
 ---
 description: Run validate-vault.mjs and relay the result as-is
 argument-hint: "[--json]"
-allowed-tools: Read, Bash(node:*), Bash(npm install)
+allowed-tools: Read, Bash(node:*)
 ---
 
 Resolve the vault root first (sibling `Knowledge-OS`/`Project-OS` folders; ask if not found).
 
-If `<vault-root>/node_modules` does not exist, run `npm install` in `<vault-root>` first (the validator depends on `js-yaml`).
-
-Run:
+Run, through the launcher, which picks a Node new enough for the tools even when the project's default is older:
 
 ```
-node "<vault-root>/Knowledge-OS/Tools/validate-vault.mjs" $ARGUMENTS
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" validate-vault $ARGUMENTS
 ```
+
+Nothing needs installing first: the validator's one library is vendored. If the launcher exits with code 3, it found no Node 18 or newer — relay its message as printed; it names what it found and how to fix it.
 
 Report PASS or FAIL and the exact error/warning list as printed.
 

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "acorn";
 
 /* fileURLToPath, not `new URL(...).pathname`: the latter leaves percent-encoding
  * in place, so this file's own directory — `Knowledge-OS`, and `Knowledge OS`
@@ -12,7 +13,17 @@ import { fileURLToPath } from "node:url";
  * The test could not run at all, which is the likeliest reason it was never in
  * the suite. */
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const HOOK = path.join(HERE, "budget-audit.mjs");
+const HOOK = path.join(HERE, "budget-audit.cjs");
+
+/* The hook runs under the host's own Node, which on the first real
+ * installation was 12: the ESM version with `?.` never parsed there, and
+ * logged nothing for weeks while seeming fine. ECMAScript 2017 parses on
+ * Node 8 and later; the Node running this test is always newer, so only a
+ * parser held to that version can see a newer construct slip in. */
+test("the hook parses as an ECMAScript 2017 script", () => {
+  const src = fs.readFileSync(HOOK, "utf8");
+  assert.doesNotThrow(() => parse(src, { ecmaVersion: 2017, sourceType: "script", allowHashBang: true }));
+});
 
 /* Each case runs against a throwaway project root.
  *
@@ -29,7 +40,7 @@ function withRoot(fn) {
       root,
       run(payload) {
         try {
-          execFileSync("node", [HOOK], {
+          execFileSync(process.execPath, [HOOK], {
             input: JSON.stringify({ session_id: "s1", ...payload }),
             env: { ...process.env, CLAUDE_PROJECT_DIR: root },
             stdio: ["pipe", "pipe", "pipe"],
@@ -137,7 +148,7 @@ test("garbage on stdin is survived silently", () => {
   withRoot((t) => {
     let code = 0;
     try {
-      execFileSync("node", [HOOK], {
+      execFileSync(process.execPath, [HOOK], {
         input: "not json at all",
         env: { ...process.env, CLAUDE_PROJECT_DIR: t.root },
         stdio: ["pipe", "pipe", "pipe"],
@@ -147,5 +158,24 @@ test("garbage on stdin is survived silently", () => {
     }
     assert.equal(code, 0);
     assert.deepEqual(t.log(), []);
+  });
+});
+
+/* JSON that is not an object (`null`, a number) and a budget that is not an
+ * object both used to reach property access; each is now a quiet exit. */
+test("a payload or a budget that is valid JSON but not an object is survived", () => {
+  withRoot((t) => {
+    t.budget("42");
+    for (const input of ["null", "7", '"text"']) {
+      let code = 0;
+      try {
+        execFileSync(process.execPath, [HOOK], { input, env: { ...process.env, CLAUDE_PROJECT_DIR: t.root }, stdio: "pipe" });
+      } catch (e) {
+        code = e.status ?? -1;
+      }
+      assert.equal(code, 0, `exit code for ${input}`);
+    }
+    t.run({ tool_name: "Read", tool_input: { file_path: t.at("a.ts") } });
+    assert.equal(t.log()[0].declared, false, "a non-object budget reads as no budget");
   });
 });

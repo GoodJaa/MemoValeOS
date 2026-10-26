@@ -8,8 +8,8 @@
 # record which plugins Obsidian needs if this vault is opened there (bases for
 # the .base views, properties for frontmatter) and alwaysUpdateLinks, which
 # keeps links intact. None of this is required outside Obsidian — the system
-# works from a plain git clone (plus `npm install` for validate-vault.mjs's
-# frontmatter parser) via validate-vault.mjs and the .claude/commands.
+# works from a plain git clone and Node 18+ (js-yaml, the frontmatter parser,
+# is vendored in Knowledge-OS/Tools/vendor/) via the tools and .claude/commands.
 
 # Obsidian — installable plugins (reinstall from the community store)
 .obsidian/plugins/
@@ -25,7 +25,7 @@ obsidian-mcp-connector.mcpb
 # behind one row, per machine, and are not knowledge.
 Metrics/sessions/
 
-# Node dependencies (reinstall with `npm install`)
+# Node dev dependencies for the tests (reinstall with `npm install`)
 node_modules/
 
 # OS noise

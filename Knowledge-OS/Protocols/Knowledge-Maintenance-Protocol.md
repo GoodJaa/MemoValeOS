@@ -3,7 +3,7 @@ type: protocol
 status: active
 lifecycle: active
 created: 2026-08-24
-updated: 2026-09-11
+updated: 2026-10-25
 ---
 # Knowledge Maintenance Protocol
 
@@ -111,6 +111,8 @@ When Knowledge OS itself has changed, verify that:
 - `Schema/schema.json` still lists any type, lifecycle, status, relationship, evidence level or floor introduced or renamed by the change.
 
 `schema.json` is the single source of these values; the `.md` files under `Schema/` describe what they mean. A value used in a note but absent from `schema.json` fails validation, and a value present in `schema.json` but undocumented in its `.md` file misleads a reader without failing anything — check both directions by hand.
+
+A change to the OS layer is not finished until it meets the three-part definition of done in `Docs/10-Extending.md` ("Готово, когда"): its documentation is current, its links are intact, its scripts run. `npm run os:check`, from the vault root, checks the last two and whether the documentation was touched at all; whether it was touched correctly stays with whoever made the change.
 
 ## 7. Report
 

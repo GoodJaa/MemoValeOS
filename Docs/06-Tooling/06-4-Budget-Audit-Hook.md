@@ -1,19 +1,19 @@
 # 6.4. Хук аудита бюджета чтения
 
-> **Описывает:** [[Knowledge-OS/Dist/hooks/budget-audit.mjs]], [[Knowledge-OS/Dist/hooks/budget-audit.test.mjs]], [[Knowledge-OS/Dist/settings.fragment.json]], [[Knowledge-OS/Protocols/Context-Selection-Protocol]] (§2, «Writing the budget down»)
+> **Описывает:** [[Knowledge-OS/Dist/hooks/budget-audit.cjs]], [[Knowledge-OS/Dist/hooks/budget-audit.test.mjs]], [[Knowledge-OS/Dist/settings.fragment.json]], [[Knowledge-OS/Protocols/Context-Selection-Protocol]] (§2, «Writing the budget down»)
 > **Связано:** [[Docs/04-Assistant-Behaviour/04-3-Context-Selection]] — что такое бюджет чтения и зачем он, [[Docs/06-Tooling/06-3-Context-Metrics]] — где журнал сводится в числа, [[Docs/05-Project-OS/05-4-Session-Lifecycle]] — кто создаёт и удаляет `budget.json`, [[Docs/08-Distribution/08-2-Adoption]] — как хук попадает в `.claude/`
 
 ## Назначение
 
 [[Knowledge-OS/Protocols/Context-Selection-Protocol]] требует до первого чтения объявить бюджет: целевые факты, точки входа, условие остановки. Это, вероятно, самое ценное правило системы — и единственное, которое ничто не проверяло: тест `BEHAV-7` в [[QA]] носил ⚠️ с момента написания и оставался непроверенным двенадцать задач подряд.
 
-`budget-audit.mjs` — хук Claude Code `PreToolUse`, который на каждый `Read`/`Grep`/`Glob` дописывает строку в журнал: какой путь, был ли бюджет объявлен вообще и попадает ли путь в объявленные точки входа. Хук **только измеряет** и никогда не блокирует.
+`budget-audit.cjs` — хук Claude Code `PreToolUse`, который на каждый `Read`/`Grep`/`Glob` дописывает строку в журнал: какой путь, был ли бюджет объявлен вообще и попадает ли путь в объявленные точки входа. Хук **только измеряет** и никогда не блокирует.
 
 ## Как работает
 
 ### Подключение
 
-Канонический источник — `Knowledge-OS/Dist/hooks/budget-audit.mjs`; развёрнутая копия — `.claude/hooks/budget-audit.mjs` в корне проекта (Claude Code грузит хуки только оттуда). Блок в `.claude/settings.json` берётся из [[Knowledge-OS/Dist/settings.fragment.json]]:
+Канонический источник — `Knowledge-OS/Dist/hooks/budget-audit.cjs`; развёрнутая копия — `.claude/hooks/budget-audit.cjs` в корне проекта (Claude Code грузит хуки только оттуда). Блок в `.claude/settings.json` берётся из [[Knowledge-OS/Dist/settings.fragment.json]]:
 
 ```json
 {
@@ -24,7 +24,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/budget-audit.mjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/budget-audit.cjs"],
             "timeout": 10
           }
         ]
@@ -34,7 +35,15 @@
 }
 ```
 
-Развёртывание делает `adopt.mjs` (`/mv-adopt`); расхождение копии с источником — ошибка валидатора `deployed-command-drift`, отсутствие копии — предупреждение `deployed-command-missing` (см. [[Docs/06-Tooling/06-1-Validator]]).
+Exec-форма (`command` + `args`): Claude Code запускает `node` без оболочки и сам подставляет `${CLAUDE_PROJECT_DIR}` в аргумент. В shell-форме, которая стояла до 2026-10-25, переменную раскрывала оболочка. На Windows без Git Bash это PowerShell: там `$CLAUDE_PROJECT_DIR` — пустая переменная, а упавший хук `PreToolUse` может блокировать вызов инструмента.
+
+Развёртывание делает `adopt.mjs` (`/mv-adopt`); расхождение копии с источником — ошибка валидатора `deployed-command-drift`, отсутствие копии — предупреждение `deployed-command-missing` (см. [[Docs/06-Tooling/06-1-Validator]]). Старую запись (`budget-audit.mjs` в shell-форме) `adopt.mjs` заменяет на месте, а не добавляет вторую рядом ([[Docs/08-Distribution/08-2-Adoption]]).
+
+### На каком Node работает
+
+Хук запускается тем `node`, что стоит у хоста в `PATH`, и через лаунчер `mv.cjs` не идёт ([[Docs/06-Tooling/06-8-Launcher]]): он срабатывает на каждое чтение, и лишний процесс там слишком дорог. Поэтому сам файл написан так, чтобы его разобрал старый Node: CommonJS (`.cjs`, независимо от `"type"` в ближайшем `package.json`) и синтаксис ECMAScript 2017 — без `?.`, `??` и `catch` без параметра. Такой файл разбирается начиная с Node 8. Синтаксис закреплён тестом: `budget-audit.test.mjs` разбирает файл через `acorn` с `ecmaVersion: 2017`.
+
+До 2026-10-25 хук был ESM-файлом `budget-audit.mjs` с `?.`. На первом реальном проекте Node хоста был 12, и хук падал с `SyntaxError` раньше своей первой строки, то есть до кода, обещавшего «exits 0 on every path». Ненулевой код хука `PreToolUse` вызов не блокирует, поэтому и не показывается. Неделями журнал не писался, и никто не видел ошибки.
 
 ### Вход: payload хука
 
@@ -49,7 +58,7 @@ Claude Code передаёт на stdin JSON. Хук использует пол
 | `agent_type`, `agent_id` | есть только у вызовов субагента |
 | `cwd` | запасной корень проекта |
 
-Корень проекта: `CLAUDE_PROJECT_DIR`, иначе `payload.cwd`, иначе `FALLBACK_ROOT` — два уровня вверх от файла хука (вычисляется через `fileURLToPath`, а не `new URL().pathname`: последний оставляет `%20` в путях с пробелами, и хук, молча выходящий с `0`, записывал бы не то).
+Корень проекта: `CLAUDE_PROJECT_DIR`, иначе `payload.cwd`, иначе `FALLBACK_ROOT` — два уровня вверх от каталога хука (`path.resolve(__dirname, "..", "..")`). В ESM-версии он вычислялся через `fileURLToPath`, а не `new URL().pathname`: последний оставляет `%20` в путях с пробелами. В CommonJS `__dirname` — обычный путь, и эта ловушка исчезла сама. JSON, который разобрался, но не является объектом (`null`, число), и такой же `budget.json` считаются отсутствующими.
 
 ### Бюджет: `.claude/budget.json`
 
@@ -124,6 +133,7 @@ flowchart TD
 ## Подводные камни
 
 - **Хук не судит об устаревании.** Любой читаемый `budget.json` считается объявленным, а `task` просто повторяется в каждой записи: хук не знает, какая задача текущая. Устаревание обнаруживает `context-metrics.mjs` (`analyseBudget`, `staleBudgets`) — по файлу задачи, найденному по имени или ведущему идентификатору (см. [[Docs/06-Tooling/06-3-Context-Metrics]]). Раньше комментарий в `main()` обещал, что устаревший бюджет «treated as absent», — код этого никогда не делал; теперь комментарий говорит то, что есть.
+- **Линтер хоста видит развёрнутую копию.** Flat-config ESLint по умолчанию проверяет и dot-каталоги, так что `eslint .` хоста доходит до `.claude/hooks/budget-audit.cjs`. Там у него нет глобальных `process` и `__dirname`, а `catch (e)` без использования `e` он считает ошибкой: ES2017 не позволяет писать `catch {}`. В проекте-носителе это уронило pre-push 2026-10-25. Поэтому файл начинается с `/* eslint-disable */` и объяснения: линтеру хоста этот файл не принадлежит.
 - **Видны только `Read`/`Grep`/`Glob`.** Чтение через `Bash` (`cat`, `sed`) и через MCP-инструменты Obsidian хук не видит — `matcher` их не включает.
 - **Пути вне корня проекта** записываются абсолютными и в `entryPoints`, заданные относительно, никогда не попадут.
 - **Раньше метрики искали журнал только в `dirname(VAULT)/.claude/`**, а хук пишет в `<корень проекта>/.claude/`; в самостоятельной раскладке это разные места, и журнал не читался. Теперь `analyseBudget` проверяет и родителя хранилища, и само хранилище.
@@ -131,8 +141,9 @@ flowchart TD
 
 ## Как менять
 
-- Править **только** `Knowledge-OS/Dist/hooks/budget-audit.mjs`, затем развернуть копию (`node "Knowledge-OS/Tools/adopt.mjs" --apply --only …` или `/mv-adopt`) — иначе валидатор даст `deployed-command-drift`.
+- Править **только** `Knowledge-OS/Dist/hooks/budget-audit.cjs`, затем развернуть копию (`node "Knowledge-OS/Tools/mv.cjs" adopt --apply --only hooks --yes` или `/mv-adopt`) — иначе валидатор даст `deployed-command-drift`.
 - Новое поле записи — добавить в объект `record`, затем учесть в `analyseBudget()` у `context-metrics.mjs`; старые строки журнала нового поля не имеют — читать его с запасным значением.
 - Новый инструмент (например, MCP-чтение) — `matcher` в [[Knowledge-OS/Dist/settings.fragment.json]] **и** ветка в `firstPath()`; развёрнутый `.claude/settings.json` обновить тем же развёртыванием.
-- Принцип «выход 0 на любом пути» сохранять; тест `garbage on stdin is survived silently` — несущий.
+- Принцип «выход 0 на любом пути» сохранять; тест `garbage on stdin is survived silently` — несущий. `main()` обёрнут в `try`, так что и непредвиденное исключение даёт `0`.
+- Синтаксис — только ECMAScript 2017 и CommonJS; тест «the hook parses as an ECMAScript 2017 script» упадёт на первом `?.`. Переименование хука — новое имя в `Dist/hooks/`, старое — в `OLD_HOOK_NAMES` у `adopt.mjs`, оба — в шаблоне `DEPLOYABLE` валидатора.
 - Тесты: `node --test "Knowledge-OS/Dist/hooks/budget-audit.test.mjs"` (входит в `npm test`). Запись в [[CHANGELOG]].

@@ -1,0 +1,14 @@
+{
+  "name": "memovaleos",
+  "owner": {
+    "name": "MemoValeOS"
+  },
+  "description": "MemoValeOS — a knowledge OS for projects worked on with an AI assistant. This vault is the marketplace.",
+  "plugins": [
+    {
+      "name": "mv",
+      "source": "./Knowledge-OS/Dist/plugin",
+      "description": "MemoValeOS commands (/mv:check, /mv:resume, /mv:close…) and the reading-budget hook, run from this project's vault"
+    }
+  ]
+}

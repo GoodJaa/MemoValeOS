@@ -12,7 +12,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync, statSync } from "node:fs";
 import { join, dirname, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -41,7 +41,7 @@ function makeProject(seed = {}) {
 
 function run(vault, args = []) {
   try {
-    const stdout = execFileSync("node", [join(vault, "Knowledge-OS", "Tools", "adopt.mjs"), ...args], {
+    const stdout = execFileSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "adopt.mjs"), ...args], {
       encoding: "utf8",
       cwd: vault,
     });
@@ -106,7 +106,7 @@ test("an empty project root gets commands, hook, settings, redirect and gitignor
       assert.equal(read(root, `.claude/commands/${name}`), readFileSync(join(DIST_SRC, "commands", name), "utf8"));
     }
 
-    assert.ok(has(root, ".claude/hooks/budget-audit.mjs"));
+    assert.ok(has(root, ".claude/hooks/budget-audit.cjs"));
     /* The hook's own test travels in Dist so it reaches upstream, but it is
      * this repository's test and has no business in a host project. */
     assert.ok(!has(root, ".claude/hooks/budget-audit.test.mjs"));
@@ -130,7 +130,7 @@ test("a host's own CLAUDE.md is preserved verbatim under the redirect and in the
 
     const inbox = read(root, "MemoValeOS/Project-OS/Inbox/Adopted CLAUDE.md");
     assert.ok(inbox.includes(body.trim()), "the original body must be recoverable in full");
-    assert.match(inbox, /Moved verbatim/);
+    assert.match(inbox, /Copied verbatim/);
   });
 });
 
@@ -170,7 +170,70 @@ test("an existing Read|Grep|Glob matcher keeps its own hooks and gains ours", ()
     assert.equal(after.hooks.PreToolUse.length, 1, "no duplicate matcher");
     const hooks = after.hooks.PreToolUse[0].hooks;
     assert.equal(hooks[0].command, "echo mine-first", "theirs stays, and stays first");
-    assert.match(hooks[1].command, /budget-audit\.mjs/);
+    /* Exec form: no shell, so `${CLAUDE_PROJECT_DIR}` is not left to a shell
+     * that, on Windows without Git Bash, would be PowerShell and expand it to
+     * nothing. */
+    assert.equal(hooks[1].command, "node");
+    assert.deepEqual(hooks[1].args, ["${CLAUDE_PROJECT_DIR}/.claude/hooks/budget-audit.cjs"]);
+  });
+});
+
+/* Every project installed before 2026-10-25 carries the shell-form entry for
+ * budget-audit.mjs, the hook that never parsed on a host's Node 12. Matching
+ * only the current form would add a second entry beside the old one, which
+ * would go on failing on every read. The old entry is replaced in place; the
+ * host's own hook keeps its position; the stale file is named, not deleted. */
+const OLD_ENTRY = { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/budget-audit.mjs"', timeout: 10 };
+
+test("an older budget-audit.mjs entry is replaced in place, never duplicated", () => {
+  const settings = {
+    hooks: {
+      PreToolUse: [{ matcher: "Read|Grep|Glob", hooks: [{ type: "command", command: "echo theirs" }, OLD_ENTRY] }],
+    },
+  };
+  withProject(
+    { ".claude/settings.json": JSON.stringify(settings, null, 2), ".claude/hooks/budget-audit.mjs": "// old\n" },
+    (root, vault) => {
+      const verify = run(vault, ["--verify", "--only", "settings"]);
+      assert.equal(verify.code, 1, "an outdated entry is drift");
+
+      const plan = run(vault, ["--only", "settings,hooks"]);
+      assert.match(plan.stdout, /\[settings\] replace/);
+      assert.match(plan.stdout, /older version of the hook; .* delete it by hand/);
+
+      run(vault, ["--apply", "--only", "settings,hooks"]);
+      const after = JSON.parse(read(root, ".claude/settings.json"));
+      const hooks = after.hooks.PreToolUse[0].hooks;
+      assert.equal(after.hooks.PreToolUse.length, 1);
+      assert.equal(hooks.length, 2);
+      assert.equal(hooks[0].command, "echo theirs", "the host's hook keeps its place");
+      assert.equal(hooks[1].command, "node");
+      assert.deepEqual(hooks[1].args, ["${CLAUDE_PROJECT_DIR}/.claude/hooks/budget-audit.cjs"]);
+      assert.ok(has(root, ".claude/hooks/budget-audit.cjs"));
+      assert.ok(has(root, ".claude/hooks/budget-audit.mjs"), "nothing is deleted");
+
+      const again = run(vault, ["--apply", "--only", "settings"]);
+      assert.match(again.stdout, /already current/);
+      assert.equal(run(vault, ["--verify", "--only", "settings"]).code, 0);
+    }
+  );
+});
+
+test("duplicate budget entries collapse into one current entry", () => {
+  const settings = {
+    hooks: {
+      PreToolUse: [
+        { matcher: "Read|Grep|Glob", hooks: [OLD_ENTRY] },
+        { matcher: "Read", hooks: [OLD_ENTRY] },
+      ],
+    },
+  };
+  withProject({ ".claude/settings.json": JSON.stringify(settings, null, 2) }, (root, vault) => {
+    run(vault, ["--apply", "--only", "settings"]);
+    const after = JSON.parse(read(root, ".claude/settings.json"));
+    const all = after.hooks.PreToolUse.flatMap((m) => m.hooks);
+    assert.equal(all.filter((h) => JSON.stringify(h).includes("budget-audit")).length, 1);
+    assert.equal(after.hooks.PreToolUse.length, 1, "a matcher left empty is removed");
   });
 });
 
@@ -231,7 +294,7 @@ test("--only restricts the work to the named classes", () => {
   withProject({ "CLAUDE.md": "# Host\n\nTheirs.\n" }, (root, vault) => {
     run(vault, ["--apply", "--only", "commands"]);
     assert.ok(has(root, ".claude/commands/mv-check.md"));
-    assert.ok(!has(root, ".claude/hooks/budget-audit.mjs"), "hooks were out of scope");
+    assert.ok(!has(root, ".claude/hooks/budget-audit.cjs"), "hooks were out of scope");
     assert.ok(!has(root, ".claude/settings.json"), "settings were out of scope");
     assert.doesNotMatch(read(root, "CLAUDE.md"), /redirect:begin/, "claude-md was out of scope");
   });
@@ -291,10 +354,269 @@ test("in the standalone layout the vault's own CLAUDE.md is left alone", () => {
   });
 });
 
+/* The first real installation: a clone of the distribution, with its own
+ * .git, inside the project's repository. The toplevel rule picked the vault
+ * and deployed .claude/ into it, where Claude Code never looks. Now the
+ * script stops and asks, and an explicit --project, or a record from an
+ * earlier apply, settles it. */
+test("a vault with its own .git inside another repository is refused until a root is named", () => {
+  withProject({}, (root, vault) => {
+    const git = (cwd, ...args) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    git(root, "init", "-q");
+    git(vault, "init", "-q");
+    const before = snapshot(root);
+    const refused = spawnSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "adopt.mjs"), "--apply"], { encoding: "utf8", cwd: vault });
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /git repository of its own, inside another one/);
+    assert.match(refused.stderr, /--project/);
+    assert.match(refused.stderr, /--standalone/);
+    assert.deepEqual(snapshot(root), before, "nothing written");
+
+    assert.equal(run(vault, ["--apply", "--team", "--project", root]).code, 0);
+    assert.ok(has(root, ".claude/commands/mv-check.md"), "deployed into the project, not the vault");
+    assert.ok(!has(root, "MemoValeOS/.claude"));
+
+    const again = run(vault, ["--only", "commands"]);
+    assert.equal(again.code, 0, "the record now names the root");
+    assert.match(again.stdout, /project root from\s+install record/);
+  });
+});
+
+test("an apply records the project root, the mode and every deployed file with its hash", () => {
+  withProject({}, (root, vault) => {
+    run(vault, ["--apply"]);
+    const rec = JSON.parse(read(root, "MemoValeOS/.mvos/install.json"));
+    assert.equal(rec.format, 1);
+    assert.equal(rec.mode, "team");
+    assert.equal(rec.projectRoot, "..");
+    const paths = rec.files.map((f) => f.path);
+    assert.ok(paths.includes(".claude/commands/mv-check.md"));
+    assert.ok(paths.includes(".claude/hooks/budget-audit.cjs"));
+    for (const f of rec.files) assert.match(f.sha256, /^[0-9a-f]{64}$/);
+    assert.deepEqual(rec.blocks.map((b) => b.class).sort(), ["claude-md", "gitignore", "settings"]);
+
+    const plan = run(vault, []);
+    assert.match(plan.stdout, /\[record\] .*current/);
+
+    /* An upgrade since the last apply: the plan says the record will name the
+     * new version, rather than calling it current. */
+    writeFileSync(join(vault, ".os-version"), "os-v99\n");
+    assert.match(run(vault, []).stdout, /\[record\] update .*OS version .* → os-v99/);
+    run(vault, ["--apply"]);
+    assert.equal(JSON.parse(read(root, "MemoValeOS/.mvos/install.json")).osVersion, "os-v99");
+  });
+});
+
+test("a standalone vault records mode standalone and project root .", () => {
+  withProject({ "MemoValeOS/CLAUDE.md": "# The real entry point\n" }, (root, vault) => {
+    run(vault, ["--apply", "--standalone", "--only", "commands"]);
+    const rec = JSON.parse(read(root, "MemoValeOS/.mvos/install.json"));
+    assert.equal(rec.mode, "standalone");
+    assert.equal(rec.projectRoot, ".");
+    assert.ok(has(root, "MemoValeOS/.claude/commands/mv-check.md"));
+  });
+});
+
+/* ------------------------------------------- personal install and removal */
+
+/* A project under git with its seed files committed — the shape of a team's
+ * repository — and the vault beside them, untracked. */
+function withGitProject(seed, fn, rootName) {
+  const base = mkdtempSync(join(tmpdir(), "mv-adopt-git-"));
+  const root = rootName ? join(base, rootName) : base;
+  const vault = join(root, "MemoValeOS");
+  try {
+    mkdirSync(join(vault, "Knowledge-OS", "Tools"), { recursive: true });
+    cpSync(DIST_SRC, join(vault, "Knowledge-OS", "Dist"), { recursive: true });
+    cpSync(join(VAULT_SRC, ".claude-plugin"), join(vault, ".claude-plugin"), { recursive: true });
+    cpSync(join(HERE, "adopt.mjs"), join(vault, "Knowledge-OS", "Tools", "adopt.mjs"));
+    const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    git("init", "-q");
+    git("config", "user.email", "fixture@example.invalid");
+    git("config", "user.name", "Fixture");
+    git("config", "commit.gpgsign", "false");
+    git("config", "core.autocrlf", "false");
+    const tracked = [];
+    /* A key starting with `!` is written but left untracked. */
+    for (const [key, content] of Object.entries(seed)) {
+      const rel = key.replace(/^!/, "");
+      const p = join(root, rel.split("/").join(sep));
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, content, "utf8");
+      if (!key.startsWith("!")) tracked.push(rel);
+    }
+    if (tracked.length) {
+      git("add", "--", ...tracked);
+      git("commit", "-q", "-m", "seed");
+    }
+    fn(root, vault, git);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+/* Every file under the project except the vault and git's own directory. */
+const hostSnapshot = (root) =>
+  Object.fromEntries(Object.entries(snapshot(root)).filter(([p]) => !p.startsWith("MemoValeOS") && !p.startsWith(".git" + sep) && p !== ".git"));
+const excludeText = (root) => readFileSync(join(root, ".git", "info", "exclude"), "utf8");
+
+const TEAM_RULES = "# Team rules\n\nDeploy on Fridays, never Thursdays.\n";
+const THEIR_SETTINGS = JSON.stringify({ hooks: { PostToolUse: [{ matcher: "Write", hooks: [{ type: "command", command: "echo theirs" }] }] } }, null, 2) + "\n";
+const CLAUDE_OWNED = JSON.stringify({ permissions: { allow: ["Bash(npm test)"] } }, null, 2) + "\n";
+
+test("a git project with a tracked CLAUDE.md is offered the personal install, and --apply needs a mode", () => {
+  withGitProject({ "CLAUDE.md": TEAM_RULES }, (root, vault) => {
+    const plan = run(vault, []);
+    assert.equal(plan.code, 0);
+    assert.match(plan.stdout, /none chosen — recommended: local, because CLAUDE\.md is tracked/);
+    assert.match(plan.stdout, /claude plugin install mv@memovaleos --scope local/);
+    const before = hostSnapshot(root);
+    const applied = spawnSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "adopt.mjs"), "--apply"], { encoding: "utf8", cwd: vault });
+    assert.equal(applied.status, 1);
+    assert.match(applied.stderr, /No mode chosen/);
+    assert.deepEqual(hostSnapshot(root), before);
+  });
+});
+
+/* The first real installation's whole difficulty, as one assertion: a
+ * personal install into a team's repository changes no tracked file and
+ * leaves git with nothing to report. */
+test("--local changes no tracked file, leaves git status empty, and hands the plugin step over", () => {
+  withGitProject(
+    {
+      "CLAUDE.md": TEAM_RULES,
+      ".gitignore": "node_modules/\n",
+      ".claude/settings.json": THEIR_SETTINGS,
+      "!.claude/settings.local.json": CLAUDE_OWNED,
+    },
+    (root, vault, git) => {
+      const { code, stdout } = run(vault, ["--apply", "--local"]);
+      assert.equal(code, 0, stdout);
+      assert.equal(git("status", "--porcelain"), "", "nothing for git to report");
+      assert.equal(git("diff"), "");
+      assert.equal(read(root, "CLAUDE.md"), TEAM_RULES);
+      assert.equal(read(root, ".claude/settings.json"), THEIR_SETTINGS);
+      assert.equal(read(root, ".claude/settings.local.json"), CLAUDE_OWNED, "Claude Code's own file is not ours to touch");
+      assert.match(read(root, ".claude/rules/memovaleos.md"), /MemoValeOS\/CLAUDE\.md/);
+      assert.ok(!has(root, ".claude/commands"), "no copies: the commands come with the plugin");
+      assert.match(excludeText(root), /^\/MemoValeOS\/$/m);
+      assert.match(stdout, /claude plugin marketplace add ".*MemoValeOS" --scope local/);
+      assert.match(stdout, /claude plugin install mv@memovaleos --scope local/);
+      const rec = JSON.parse(read(root, "MemoValeOS/.mvos/install.json"));
+      assert.equal(rec.mode, "local");
+      assert.deepEqual(rec.blocks.map((b) => b.class), ["exclude"]);
+
+      assert.equal(run(vault, ["--verify"]).code, 1, "incomplete until the plugin is installed");
+      writeFileSync(join(root, ".claude", "settings.local.json"), JSON.stringify({ enabledPlugins: { "mv@memovaleos": true } }, null, 2) + "\n");
+      assert.equal(run(vault, ["--verify"]).code, 0);
+
+      const afterFirst = hostSnapshot(root);
+      const exclude = excludeText(root);
+      const again = run(vault, ["--apply"]);
+      assert.equal(again.code, 0);
+      assert.match(again.stdout, /Mode\s+: local\s+\(install record\)/);
+      assert.match(again.stdout, /Nothing to change/);
+      assert.deepEqual(hostSnapshot(root), afterFirst);
+      assert.equal(excludeText(root), exclude, "the exclude block is not appended twice");
+    }
+  );
+});
+
+/* CLAUDE.local.md would have hidden it: Claude Code stops reading AGENTS.md
+ * when a CLAUDE.md of any kind is present. The rules file hides nothing. */
+test("a host with only AGENTS.md gets no CLAUDE.md of any kind", () => {
+  withGitProject({ "AGENTS.md": "# Agents\n" }, (root, vault) => {
+    assert.equal(run(vault, ["--apply", "--local"]).code, 0);
+    assert.ok(!has(root, "CLAUDE.md"));
+    assert.ok(!has(root, "CLAUDE.local.md"));
+    assert.ok(has(root, ".claude/rules/memovaleos.md"));
+  });
+});
+
+test("--uninstall after --local takes out exactly what went in", () => {
+  withGitProject({ "CLAUDE.md": TEAM_RULES, "!.claude/settings.local.json": CLAUDE_OWNED }, (root, vault) => {
+    const before = hostSnapshot(root);
+    const exclude = excludeText(root);
+    run(vault, ["--apply", "--local"]);
+    const plan = run(vault, ["--uninstall"]);
+    assert.match(plan.stdout, /\[rules\] delete \.claude\/rules\/memovaleos\.md/);
+    assert.match(plan.stdout, /\[exclude\] remove-block/);
+    const { code } = run(vault, ["--uninstall", "--apply"]);
+    assert.equal(code, 0);
+    assert.deepEqual(hostSnapshot(root), before);
+    assert.equal(excludeText(root), exclude);
+    assert.ok(!has(root, "MemoValeOS/.mvos/install.json"), "the record goes last");
+    assert.ok(has(root, "MemoValeOS/Knowledge-OS"), "the vault is never removed");
+  });
+});
+
+/* A team install writes into four files the project owns. Taking it out must
+ * give each of them back exactly: the redirect and its blank line, our hook
+ * entry among theirs, our lines in .gitignore — and their own command stays. */
+test("--uninstall after --team gives the host back byte for byte", () => {
+  const seed = {
+    "CLAUDE.md": "# Host\n\nTheirs.\n",
+    ".gitignore": "node_modules/\n",
+    ".claude/settings.json": THEIR_SETTINGS,
+    ".claude/commands/deploy.md": "---\ndescription: theirs\n---\nTheirs.\n",
+  };
+  withProject(seed, (root, vault) => {
+    const before = hostSnapshot(root);
+    assert.equal(run(vault, ["--apply"]).code, 0);
+    assert.notDeepEqual(hostSnapshot(root), before);
+    const { code, stdout } = run(vault, ["--uninstall", "--apply"]);
+    assert.equal(code, 0, stdout);
+    assert.deepEqual(hostSnapshot(root), before);
+    assert.ok(has(root, "MemoValeOS/Project-OS/Inbox/Adopted CLAUDE.md"), "the copy in the vault stays");
+  });
+});
+
+test("--uninstall leaves a command edited since install, and says so", () => {
+  withProject({}, (root, vault) => {
+    run(vault, ["--apply"]);
+    const edited = join(root, ".claude", "commands", "mv-check.md");
+    writeFileSync(edited, readFileSync(edited, "utf8") + "\nLOCAL EDIT\n", "utf8");
+    const { code, stdout } = run(vault, ["--uninstall", "--apply"]);
+    assert.equal(code, 2, "a refusal is visible in the exit code");
+    assert.match(stdout, /mv-check\.md\s+— edited since it was installed/);
+    assert.ok(has(root, ".claude/commands/mv-check.md"));
+    assert.ok(!has(root, ".claude/commands/mv-close.md"), "the unedited ones go");
+    assert.ok(!has(root, ".claude/settings.json"), "a settings file holding only our hook goes with it");
+  });
+});
+
+/* The OS layer names no language any more; the project names its own. */
+test("--language and --notes write mvos.config.json into the vault and nowhere else", () => {
+  withGitProject({ "CLAUDE.md": TEAM_RULES }, (root, vault, git) => {
+    const bad = spawnSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "adopt.mjs"), "--local", "--language", "Russian"], { encoding: "utf8", cwd: vault });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /language tag such as ru/);
+
+    assert.equal(run(vault, ["--apply", "--local", "--language", "ru", "--notes", "split"]).code, 0);
+    assert.deepEqual(JSON.parse(read(root, "MemoValeOS/mvos.config.json")), { format: 1, language: "ru", notes: "split" });
+    assert.equal(git("status", "--porcelain"), "");
+
+    assert.equal(run(vault, ["--apply", "--language", "en"]).code, 0);
+    assert.deepEqual(JSON.parse(read(root, "MemoValeOS/mvos.config.json")), { format: 1, language: "en", notes: "split" }, "notes kept");
+    assert.match(run(vault, []).stdout, /\[config\] .*language en, notes split/);
+  });
+});
+
+test("a project path with spaces installs and excludes correctly", () => {
+  withGitProject(
+    { "README.md": "# App\n" },
+    (root, vault, git) => {
+      assert.equal(run(vault, ["--apply", "--local"]).code, 0);
+      assert.equal(git("status", "--porcelain"), "");
+    },
+    "my project"
+  );
+});
+
 test("nothing is ever staged or committed", () => {
   withProject({}, (root, vault) => {
     execFileSync("git", ["init", "-q"], { cwd: root });
-    run(vault, ["--apply"]);
+    assert.equal(run(vault, ["--apply", "--team"]).code, 0);
     const staged = execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: root, encoding: "utf8" });
     assert.equal(staged.trim(), "", "the tree must be left dirty for a human to inspect");
   });

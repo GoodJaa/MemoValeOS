@@ -1,6 +1,6 @@
 # 04-3. Выбор контекста и бюджет чтения
 
-> **Описывает:** [[Knowledge-OS/Protocols/Context-Selection-Protocol]], [[Knowledge-OS/Rules/Context-Rules]], файл бюджета `.claude/budget.json` и его читателя [[Knowledge-OS/Dist/hooks/budget-audit.mjs]], строки бюджета в [[Knowledge-OS/Dist/commands/mv-resume]] и ритуале [[Project-OS/06-AI/AI]].
+> **Описывает:** [[Knowledge-OS/Protocols/Context-Selection-Protocol]], [[Knowledge-OS/Rules/Context-Rules]], файл бюджета `.claude/budget.json` и его читателя [[Knowledge-OS/Dist/hooks/budget-audit.cjs]], строки бюджета в [[Knowledge-OS/Dist/commands/mv-resume]] и ритуале [[Project-OS/06-AI/AI]].
 > **Связано:** [[Docs/04-Assistant-Behaviour/04-1-Entry-Points]] — откуда начинается чтение, [[Docs/04-Assistant-Behaviour/04-2-Rules]] — классы контекста в Context-Rules, [[Docs/06-Tooling/06-4-Budget-Audit-Hook]] — устройство хука, [[Docs/06-Tooling/06-3-Context-Metrics]] — блок Reading discipline, [[Docs/06-Tooling/06-5-Context-Provider]] — тот же принцип для внешнего потребителя, [[Docs/05-Project-OS/05-4-Session-Lifecycle]] — жизнь `budget.json` в сессии.
 
 ## Назначение
@@ -85,7 +85,7 @@ Grep возвращает кандидатов. Перед открытием �
 
 ### Хук аудита
 
-Хук `PreToolUse` на `Read|Grep|Glob` (блок из [[Knowledge-OS/Dist/settings.fragment.json]] в `.claude/settings.json`) запускает `.claude/hooks/budget-audit.mjs`. Он пишет строку в `.claude/budget-audit.jsonl`:
+Хук `PreToolUse` на `Read|Grep|Glob` (блок из [[Knowledge-OS/Dist/settings.fragment.json]] в `.claude/settings.json`) запускает `.claude/hooks/budget-audit.cjs`. Он пишет строку в `.claude/budget-audit.jsonl`:
 
 ```json
 {"at":"2026-10-01T12:34:56.549Z","session":"ad79c9d1-…","agent":null,"agentId":null,"tool":"Read","path":"src/storage/relationship-store.test.ts","declared":true,"task":"T28-Relationship-Storage","withinBudget":true}
@@ -132,7 +132,7 @@ Grep возвращает кандидатов. Перед открытием �
 
 - **`entryPoints` относительны корню проекта, а не хранилища.** Во встроенной раскладке путь к заметке должен начинаться с папки хранилища (`MemoValeOS/`), иначе entry point не совпадёт ни с одним чтением, и все чтения заметок запишутся как `withinBudget: false`. Раньше пример в самом протоколе (`"Project-OS/03-Development/Tasks/T14-Function-Analyzer.md"`) был верен только для автономной раскладки; теперь он написан для встроенной и прямо говорит про обе.
 - **Раньше `task` писали меткой** (`"T14 — Function Analyzer"`), которая не совпадала ни с одним файлом, и `staleBudgets` был пуст. Теперь протокол требует имя файла задачи, а `isTaskDone()` в `context-metrics.mjs` находит и старые метки по ведущему идентификатору.
-- **Хук не проверяет устаревший бюджет.** Код использует любой разобравшийся `budget.json`, не сверяя `task` (комментарий в `budget-audit.mjs` теперь говорит именно это). Устаревание замечают `context-metrics.mjs` (задача уже `done`) и удаление в ритуале.
+- **Хук не проверяет устаревший бюджет.** Код использует любой разобравшийся `budget.json`, не сверяя `task` (комментарий в `budget-audit.cjs` теперь говорит именно это). Устаревание замечают `context-metrics.mjs` (задача уже `done`) и удаление в ритуале.
 - **Раньше `/mv-resume` не мог сам записать файл**: команда требовала объявить бюджет, а её `allowed-tools` были только `Read, Glob, Grep`. Теперь в них есть `Write(.claude/budget.json)` — запись ровно этого файла и никакого другого.
 - **Чтения через `Bash` невидимы.** `cat`, `sed`, `rg` из оболочки не проходят через хук `Read|Grep|Glob`; сессия, читающая оболочкой, выглядит как сессия без чтений.
 - **Совпадение — по целому сегменту пути, без учёта регистра.** Entry point `src/stor` не покрывает `src/storage/…`: префикс сравнивается с добавленным `/`. Зато `SRC/Storage/` и `src/storage` эквивалентны.
@@ -140,7 +140,7 @@ Grep возвращает кандидатов. Перед открытием �
 
 ## Как менять
 
-- **Формат бюджета** — протокол [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2 (пример и поля), хук [[Knowledge-OS/Dist/hooks/budget-audit.mjs]] и его тест `budget-audit.test.mjs`, анализ в `context-metrics.mjs`; развёрнутая копия хука в `.claude/hooks/` должна совпадать с `Dist/` (`deployed-command-drift`), обновить её — `adopt.mjs --apply --only hooks`.
+- **Формат бюджета** — протокол [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2 (пример и поля), хук [[Knowledge-OS/Dist/hooks/budget-audit.cjs]] и его тест `budget-audit.test.mjs`, анализ в `context-metrics.mjs`; развёрнутая копия хука в `.claude/hooks/` должна совпадать с `Dist/` (`deployed-command-drift`), обновить её — `adopt.mjs --apply --only hooks`.
 - **Блокирующая версия** — отдельное решение по числам `undeclared` и `withinBudget`, а не правка хука «заодно»; политика «никогда не мешать работе» записана в самом хуке.
 - **Шаги протокола** — только в протоколе. `CLAUDE.md`, `Context-Index` и `Knowledge-OS/README` на него ссылаются и не должны получать пересказ.
 - **Жизненный цикл файла** — ритуал в [[Project-OS/06-AI/AI]] и `/mv-close` правятся вместе: правка команды мимо `AI.md` уже дважды оставляла правило и исполнителя в разногласии.

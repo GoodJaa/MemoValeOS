@@ -26,8 +26,6 @@ import {
   mkdirSync,
   readdirSync,
   statSync,
-  symlinkSync,
-  existsSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
@@ -40,25 +38,14 @@ const FIXTURES = join(HERE, "__fixtures__");
 const SCHEMA_JSON = join(HERE, "..", "Schema", "schema.json");
 const VALIDATOR = join(HERE, "validate-vault.mjs");
 
-/* Where js-yaml actually lives, which depends on how the repo was installed.
- * A standalone `npm install` inside MemoValeOS/ puts it in this package's own
- * node_modules; installing from the Archi root, where MemoValeOS is declared
- * an npm workspace, hoists it to the root and creates no MemoValeOS/
- * node_modules at all. Hard-coding the first location made every fixture test
- * fail with ERR_MODULE_NOT_FOUND on a fresh clone — the failure did not
- * surface locally only because a stale MemoValeOS/node_modules was lying
- * around from before the workspace existed. Probe, and say so if neither
- * exists, rather than symlinking a path that isn't there. */
-const NODE_MODULES = [
-  join(HERE, "..", "..", "node_modules"),
-  join(HERE, "..", "..", "..", "node_modules"),
-].find((p) => existsSync(join(p, "js-yaml")));
-
-if (!NODE_MODULES) {
-  throw new Error(
-    "js-yaml not found in MemoValeOS/node_modules or the repository root's node_modules. Run `npm install` at the repository root."
-  );
-}
+/* The validator imports js-yaml from Tools/vendor/, so a fixture needs that
+ * folder beside its copy of the validator. Until 2026-10-25 it was an npm
+ * dependency, and this harness probed two node_modules locations for it — the
+ * standalone install and the workspace-hoisted one — because hard-coding one
+ * had already failed every fixture on a fresh clone once. Copying the
+ * vendored file has no location to guess. */
+const VENDOR = join(HERE, "vendor");
+const withVendor = (vault) => cpSync(VENDOR, join(vault, "Knowledge-OS", "Tools", "vendor"), { recursive: true });
 
 /**
  * Build a throwaway git repository around a fixture vault, so rules that ask
@@ -124,11 +111,10 @@ function runFixture(name, prepare) {
     mkdirSync(join(vault, "Knowledge-OS", "Tools"), { recursive: true });
     cpSync(SCHEMA_JSON, join(vault, "Knowledge-OS", "Schema", "schema.json"));
     cpSync(VALIDATOR, join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"));
-    // validate-vault.mjs imports js-yaml; symlink rather than copy so 15+
-    // fixture runs share one install instead of duplicating node_modules.
-    symlinkSync(NODE_MODULES, join(vault, "node_modules"), "junction");
+    // validate-vault.mjs imports ./vendor/js-yaml.mjs.
+    withVendor(vault);
 
-    const result = execFileSync("node", [join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"), "--json"], {
+    const result = execFileSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"), "--json"], {
       encoding: "utf8",
     });
     return JSON.parse(result);
@@ -158,9 +144,9 @@ function runFixtureStandalone(name, prepare) {
     mkdirSync(join(vault, "Knowledge-OS", "Tools"), { recursive: true });
     cpSync(SCHEMA_JSON, join(vault, "Knowledge-OS", "Schema", "schema.json"));
     cpSync(VALIDATOR, join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"));
-    symlinkSync(NODE_MODULES, join(vault, "node_modules"), "junction");
+    withVendor(vault);
 
-    const result = execFileSync("node", [join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"), "--json"], {
+    const result = execFileSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "validate-vault.mjs"), "--json"], {
       encoding: "utf8",
     });
     return JSON.parse(result);
@@ -246,6 +232,10 @@ const CASES = [
   ["task-type-case-insensitive", "lifecycle-behind-status"],
   ["undeployed-command-source", "undeployed-command-source"],
   ["invalid-metadata-value", "invalid-metadata-value"],
+  ["broken-md-link", "broken-md-link"],
+  ["docs-link-outside-os-layer", "docs-link-outside-os-layer"],
+  ["undocumented-os-file", "undocumented-os-file"],
+  ["invalid-config", "invalid-config"],
 ];
 
 for (const [fixture, rule] of CASES) {
@@ -413,11 +403,11 @@ test("an invalid schema.json stops the run with the reason", () => {
     schema.statusByType.tsak = schema.statusByType.task;
     writeFileSync(join(root, "Knowledge-OS", "Schema", "schema.json"), JSON.stringify(schema));
     cpSync(VALIDATOR, join(root, "Knowledge-OS", "Tools", "validate-vault.mjs"));
-    symlinkSync(NODE_MODULES, join(root, "node_modules"), "junction");
+    withVendor(root);
     let status = 0;
     let stderr = "";
     try {
-      execFileSync("node", [join(root, "Knowledge-OS", "Tools", "validate-vault.mjs")], { encoding: "utf8", stdio: "pipe" });
+      execFileSync(process.execPath, [join(root, "Knowledge-OS", "Tools", "validate-vault.mjs")], { encoding: "utf8", stdio: "pipe" });
     } catch (e) {
       status = e.status;
       stderr = e.stderr;
@@ -440,11 +430,11 @@ test("an activeLifecycleStatuses entry naming a status the type lacks stops the 
     schema.activeLifecycleStatuses.decision = ["acepted"];
     writeFileSync(join(root, "Knowledge-OS", "Schema", "schema.json"), JSON.stringify(schema));
     cpSync(VALIDATOR, join(root, "Knowledge-OS", "Tools", "validate-vault.mjs"));
-    symlinkSync(NODE_MODULES, join(root, "node_modules"), "junction");
+    withVendor(root);
     let status = 0;
     let stderr = "";
     try {
-      execFileSync("node", [join(root, "Knowledge-OS", "Tools", "validate-vault.mjs")], { encoding: "utf8", stdio: "pipe" });
+      execFileSync(process.execPath, [join(root, "Knowledge-OS", "Tools", "validate-vault.mjs")], { encoding: "utf8", stdio: "pipe" });
     } catch (e) {
       status = e.status;
       stderr = e.stderr;
@@ -611,6 +601,35 @@ test("stale-source works when the vault is its own repository root", () => {
   assert.match(stale[0].message, /src\/thing\.ts/);
 });
 
+/* Backlog 2026-09-17: a vault with its own .git inside the project. The
+ * search for a repository stopped at the vault's own, which never held the
+ * project's code, so every `source` read as unresolvable. The personal
+ * install recommends exactly this layout, and its install record names the
+ * project root; with the record the project's repository answers. */
+test("with an install record, a vault with its own .git asks the project's repository", () => {
+  const prepare = (withRecord) => (vault) => {
+    const commit = withGitHistory(
+      vault,
+      [{ path: "src/thing.ts", content: "export const a = 1;\n" }],
+      [{ path: "src/other.ts", content: "export const b = 1;\n" }]
+    );
+    stampCommit(vault, commit);
+    execFileSync("git", ["init", "--quiet"], { cwd: vault });
+    if (withRecord) {
+      mkdirSync(join(vault, ".mvos"), { recursive: true });
+      writeFileSync(join(vault, ".mvos", "install.json"), JSON.stringify({ format: 1, mode: "local", projectRoot: ".." }));
+    }
+  };
+  const without = runFixture("stale-source-current", prepare(false));
+  assert.ok(
+    without.warnings.some((w) => w.rule === "stale-source" && /cannot resolve/.test(w.message)),
+    "without a record the vault's own repository is asked, and cannot answer"
+  );
+  const withRecord = runFixture("stale-source-current", prepare(true));
+  assert.deepEqual(withRecord.warnings.filter((w) => w.rule === "stale-source"), []);
+  assert.equal(withRecord.installMode, "local");
+});
+
 test("stale-source stays silent in the standalone layout when nothing moved", () => {
   const report = runFixtureStandalone("stale-source-current", (vault) => {
     const commit = withGitHistoryStandalone(
@@ -624,6 +643,73 @@ test("stale-source stays silent in the standalone layout when nothing moved", ()
     report.warnings.filter((w) => w.rule === "stale-source"),
     []
   );
+});
+
+/* The three rules of the definition of done (Docs/10-Extending.md) fire once
+ * on their own fixture and on nothing else in it. */
+for (const rule of ["broken-md-link", "docs-link-outside-os-layer", "undocumented-os-file", "invalid-config"]) {
+  test(`${rule} fixture reports exactly that one error`, () => {
+    const report = runFixture(rule);
+    assert.deepEqual(report.warnings, []);
+    assert.deepEqual(
+      report.errors.map((e) => e.rule),
+      [rule],
+      JSON.stringify(report.errors)
+    );
+  });
+}
+
+/* Every legitimate form of Markdown link must pass: relative, up a level, from
+ * the vault root, with an anchor, `<…>` and percent-encoded spaces, an image,
+ * a URL, an anchor alone — and a link shown as code is no link. Plans/ keeps
+ * the editor-style links it was written with. A rule that fired on any of
+ * these would teach its reader to stop writing links. */
+test("md-link-clean fixture triggers no false positive", () => {
+  const report = runFixture("md-link-clean");
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings, []);
+});
+
+/* What Docs/ may point at: a manifest path, a manifest-covered root file, a
+ * per-copy file, a template excluded from delivery (every copy has its own),
+ * another page. */
+test("docs-link-inside-os-layer fixture triggers no false positive", () => {
+  const report = runFixture("docs-link-inside-os-layer");
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings, []);
+});
+
+/* Every kind of OS file named the way a page names it — a tool by file name, a
+ * command as /mv-x, a hook and a Dist file by name — and test files not
+ * required at all. */
+/* Every key the config knows, each with a value it accepts — a region tag
+ * included, since a language tag is more than two letters. */
+test("config-clean fixture triggers no false positive", () => {
+  const report = runFixture("config-clean");
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings, []);
+});
+
+test("undocumented-os-file-clean fixture triggers no false positive", () => {
+  const report = runFixture("undocumented-os-file-clean");
+  assert.deepEqual(report.errors, []);
+  assert.deepEqual(report.warnings, []);
+});
+
+/* The rule table in Docs/06-1 is the documentation of the validator: a rule
+ * missing from it is a rule a reader cannot look up, and a row for a rule
+ * that no longer exists describes a check nobody runs. Both directions. */
+test("every rule the validator reports has a row in the Docs/06-1 rule table", () => {
+  const source = readFileSync(VALIDATOR, "utf8");
+  const ruleIds = new Set([...source.matchAll(/(?:err|warn)\(\s*[^,()]+,\s*"([a-z-]+)"/g)].map((m) => m[1]));
+  // Its first argument holds parentheses, which the pattern above cannot see past.
+  ruleIds.add("undeployed-command-source");
+  const page = readFileSync(join(HERE, "..", "..", "Docs", "06-Tooling", "06-1-Validator.md"), "utf8");
+  const rows = new Set([...page.matchAll(/^\| `([a-z-]+)` \| (?:error|warning) \|/gm)].map((m) => m[1]));
+  const undocumented = [...ruleIds].filter((r) => !rows.has(r)).sort();
+  const stale = [...rows].filter((r) => !ruleIds.has(r)).sort();
+  assert.deepEqual(undocumented, [], `rule(s) with no row in Docs/06-1: ${undocumented.join(", ")}`);
+  assert.deepEqual(stale, [], `row(s) in Docs/06-1 for no rule: ${stale.join(", ")}`);
 });
 
 test("every fixture directory under __fixtures__ is covered by a case", () => {
@@ -646,6 +732,10 @@ test("every fixture directory under __fixtures__ is covered by a case", () => {
     "deployed-command-missing",
     "mvignore-honored",
     "mvignore-line-unused",
+    "md-link-clean",
+    "docs-link-inside-os-layer",
+    "undocumented-os-file-clean",
+    "config-clean",
   ]);
   const present = readdirSync(FIXTURES).filter((f) => statSync(join(FIXTURES, f)).isDirectory());
   const uncovered = present.filter((f) => !covered.has(f));

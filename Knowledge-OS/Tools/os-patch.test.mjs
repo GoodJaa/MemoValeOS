@@ -103,7 +103,7 @@ function hostAfterChanges() {
 }
 
 function runPatch(host, out) {
-  return execFileSync("node", [join(host.root, "V", "Knowledge-OS", "Tools", "os-patch.mjs"), "--since", "os-v1", "--out", out], {
+  return execFileSync(process.execPath, [join(host.root, "V", "Knowledge-OS", "Tools", "os-patch.mjs"), "--since", "os-v1", "--out", out], {
     cwd: host.root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -158,7 +158,7 @@ test("a ref that names no commit is refused before anything is written", () => {
     let status = 0;
     let stderr = "";
     try {
-      execFileSync("node", [join(host.root, "V", "Knowledge-OS", "Tools", "os-patch.mjs"), "--since", "os-v9"], {
+      execFileSync(process.execPath, [join(host.root, "V", "Knowledge-OS", "Tools", "os-patch.mjs"), "--since", "os-v9"], {
         cwd: host.root,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],

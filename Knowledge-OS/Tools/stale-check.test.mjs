@@ -11,19 +11,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, existsSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-
-/* stale-check imports js-yaml; where it lives depends on how the repository
- * was installed (see validate-vault.test.mjs for the history). */
-const NODE_MODULES = [join(HERE, "..", "..", "node_modules"), join(HERE, "..", "..", "..", "node_modules")].find((p) =>
-  existsSync(join(p, "js-yaml"))
-);
-if (!NODE_MODULES) throw new Error("js-yaml not found. Run `npm install` at the repository root.");
 
 /* `vaultDir` is "" when the vault is the repository root. Notes are written
  * after the history, with `__COMMIT__` replaced by the first commit's hash. */
@@ -54,9 +47,10 @@ function withHistory(vaultDir, { seed, then, notes }, fn) {
     for (const [p, c] of Object.entries(notes)) write(v(p), c.replaceAll("__COMMIT__", `"${first}"`));
     mkdirSync(join(vault, "Knowledge-OS", "Tools"), { recursive: true });
     cpSync(join(HERE, "stale-check.mjs"), join(vault, "Knowledge-OS", "Tools", "stale-check.mjs"));
-    symlinkSync(NODE_MODULES, join(vault, "node_modules"), "junction");
+    // stale-check imports js-yaml from Tools/vendor/ (see validate-vault.test.mjs).
+    cpSync(join(HERE, "vendor"), join(vault, "Knowledge-OS", "Tools", "vendor"), { recursive: true });
 
-    const out = execFileSync("node", [join(vault, "Knowledge-OS", "Tools", "stale-check.mjs"), "--json"], { encoding: "utf8" });
+    const out = execFileSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "stale-check.mjs"), "--json"], { encoding: "utf8" });
     fn(JSON.parse(out).findings);
   } finally {
     rmSync(root, { recursive: true, force: true });

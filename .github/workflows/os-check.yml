@@ -1,0 +1,82 @@
+# The OS layer's definition of done, run where the OS is published.
+#
+# Docs/10-Extending.md ("Готово, когда") is the definition; os-check.mjs is
+# every part of it a machine can check. In the host project it runs from the
+# pre-push hook. Upstream has no such hook, so it runs here, on the platforms
+# and Node versions an installed copy actually meets: Linux and Windows, the
+# Node floor and a current one.
+#
+# This file travels with the OS layer (a line in Knowledge-OS/os-manifest).
+# Inside a host project the vault is a subfolder, and GitHub reads workflows
+# only from a repository's root `.github/`, so there it is inert.
+name: os-check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  os-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [18, 22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # docs-with-code reads every commit in the range; a shallow clone has none.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - name: os-check
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            node Knowledge-OS/Tools/os-check.mjs --range "origin/$BASE_REF..HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            node Knowledge-OS/Tools/os-check.mjs --range "$BEFORE..$SHA"
+          else
+            # A new branch has no "before"; there is no range to judge.
+            node Knowledge-OS/Tools/os-check.mjs --skip docs-with-code
+          fi
+
+  # The host the launcher exists for: a project whose default Node is 12,
+  # with a newer one installed but further down PATH. Setting up 22 and then
+  # 12 leaves both on PATH with 12 first: the first real host's shape. The launcher
+  # must parse under 12 and pick 22 by itself.
+  old-node-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 12
+      - name: the default node is the old one
+        run: node --version | grep -q '^v12\.'
+      - name: the launcher picks a Node >= 18 by itself
+        run: |
+          node Knowledge-OS/Tools/mv.cjs doctor
+          node Knowledge-OS/Tools/mv.cjs doctor --json | node -e "let s=''; process.stdin.on('data', d => s += d).on('end', () => { const r = JSON.parse(s); console.log('chosen', r.chosen && r.chosen.version); process.exit(r.chosen && /^v22\./.test(r.chosen.version) ? 0 : 1); })"
+      - name: a tool runs through the launcher under the old default
+        run: node Knowledge-OS/Tools/mv.cjs validate-vault
+      # The hook does not go through the launcher; it must run on the old
+      # Node itself, log the read, and exit 0.
+      - name: the budget hook runs and logs on Node 12
+        run: |
+          mkdir -p "$RUNNER_TEMP/host/.claude"
+          echo '{"tool_name":"Read","tool_input":{"file_path":"'"$RUNNER_TEMP"'/host/src/a.ts"}}' \
+            | CLAUDE_PROJECT_DIR="$RUNNER_TEMP/host" node Knowledge-OS/Dist/hooks/budget-audit.cjs
+          grep -q '"path":"src/a.ts"' "$RUNNER_TEMP/host/.claude/budget-audit.jsonl"

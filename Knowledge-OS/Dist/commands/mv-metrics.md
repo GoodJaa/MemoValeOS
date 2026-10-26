@@ -9,7 +9,7 @@ Resolve the vault root first (sibling `Knowledge-OS`/`Project-OS` folders; ask i
 Run:
 
 ```
-node "<vault-root>/Knowledge-OS/Tools/context-metrics.mjs" $ARGUMENTS
+node "<vault-root>/Knowledge-OS/Tools/mv.cjs" context-metrics $ARGUMENTS
 ```
 
 Print the script's output as-is. Do not reinterpret it, do not add flags of your own, do not summarize it into a verdict — that's `/mv-trend`'s job, not this command's.

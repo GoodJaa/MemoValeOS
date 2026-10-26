@@ -29,7 +29,7 @@ function withVault(files, fn) {
     cpSync(join(HERE, "graph-report.mjs"), join(vault, "Knowledge-OS", "Tools", "graph-report.mjs"));
     fn((args = []) =>
       JSON.parse(
-        execFileSync("node", [join(vault, "Knowledge-OS", "Tools", "graph-report.mjs"), "--json", ...args], { encoding: "utf8" })
+        execFileSync(process.execPath, [join(vault, "Knowledge-OS", "Tools", "graph-report.mjs"), "--json", ...args], { encoding: "utf8" })
       )
     );
   } finally {

@@ -17,7 +17,7 @@ Otherwise, report trends across the rows for exactly what those columns hold:
 - **Label** — rows are not all the same kind of work. Compare `task` rows with `task` rows; `control`, `maintenance` and `plan-review` rows are not part of the same series.
 - **Shell** — governance and project files read through Bash or PowerShell, parsed from the command line. A heuristic, kept apart from Files and Re-read; a row with Files 0 and a non-zero Shell read its knowledge through the shell. Rows before 2026-10-13 have `—`.
 
-**Do not compute the share of work on the operating system (C3) from the Label column.** Sessions that work on the OS often write no row, so the share of `maintenance` rows measures what was recorded, not what was done. Run `node "Knowledge-OS/Tools/os-share.mjs"` from the vault root instead — it reads git — and report its total and its last few weeks as they stand.
+**Do not compute the share of work on the operating system (C3) from the Label column.** Sessions that work on the OS often write no row, so the share of `maintenance` rows measures what was recorded, not what was done. Run `node "Knowledge-OS/Tools/mv.cjs" os-share` from the vault root instead — it reads git — and report its total and its last few weeks as they stand.
 
 Note explicitly that the log does **not** record a governance:project traversal ratio per session — that figure exists only as a point-in-time read from `/mv-metrics --all`, not as a trend from this log. Mention it as available on request, not as something this command computed.
 

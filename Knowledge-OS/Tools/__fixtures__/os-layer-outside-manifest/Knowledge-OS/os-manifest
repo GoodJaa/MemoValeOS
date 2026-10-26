@@ -1,4 +1,5 @@
 Knowledge-OS/README.md
 Knowledge-OS/Schema/**
 Knowledge-OS/Tools/*.mjs
+Knowledge-OS/Tools/vendor/**
 Knowledge-OS/os-manifest

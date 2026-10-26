@@ -42,7 +42,10 @@ flowchart TB
   CHANGELOG.md                   история версий слоя ОС
   Backlog.md                     сток идей по самой ОС (экземпляр, не переносится)
   .os-version                    метка версии слоя ОС, например os-v4
-  package.json                   зависимости инструментов (js-yaml) и npm-скрипты
+  mvos.config.json               настройки проекта: язык общения и язык заметок (у каждой копии свой, не в манифесте)
+  .mvos/install.json             запись установки: корень проекта, режим, файлы с хешами (пишет adopt.mjs)
+  package.json                   npm-скрипты и dev-зависимость тестов (acorn); у инструментов зависимостей нет
+  LICENSE                        лицензия MIT (входит в манифест)
   Docs/                          эта документация (для людей, слой ОС)
   Knowledge-OS/
     README.md                    оглавление слоя для ассистента
@@ -57,7 +60,7 @@ flowchart TB
                                  Project-Initialization, Repository-Survey, Relationship-Discovery,
                                  Deployment, Context-Provider
     Tools/                       *.mjs + *.test.mjs, __fixtures__/, __provider_fixtures__/
-    Dist/                        commands/mv-*.md, hooks/budget-audit.mjs,
+    Dist/                        commands/mv-*.md, hooks/budget-audit.cjs,
                                  settings.fragment.json, CLAUDE.redirect.md
   Project-OS/
     00-Home … 07-Resources       знание проекта
@@ -104,8 +107,11 @@ flowchart TB
 
 | Раскладка | Как выглядит | Где применяется | Особенности |
 |---|---|---|---|
-| Встроенная (embedded) | `<project>/MemoValeOS/` — хранилище подпапкой репозитория с кодом | проект-носитель Archi | Корневой `CLAUDE.md` — редирект ([[Knowledge-OS/Dist/CLAUDE.redirect.md]]) на `MemoValeOS/CLAUDE.md`. Корневой `package.json` объявляет хранилище npm workspace, поэтому одного `npm install` в корне достаточно. `.claude/` лежит уровнем выше хранилища |
+| Встроенная (embedded) | `<project>/MemoValeOS/` — хранилище подпапкой репозитория с кодом | проект-носитель Archi | Корневой `CLAUDE.md` — редирект ([[Knowledge-OS/Dist/CLAUDE.redirect.md]]) на `MemoValeOS/CLAUDE.md`. Корневой `package.json` объявляет хранилище npm workspace, поэтому одного `npm install` в корне достаточно для тестов (инструментам он не нужен: `js-yaml` лежит в `Knowledge-OS/Tools/vendor/`). `.claude/` лежит уровнем выше хранилища |
 | Самостоятельная (standalone) | хранилище = корень репозитория | апстрим `GoodJaa/MemoValeOS` | `.claude/` лежит внутри хранилища. Валидатор ищет `.claude/` в обоих местах (`findClaudeDir()`), а git-репозиторий — вверх от хранилища (`findRepoRoot()`) |
+| Встроенная со своим `.git` | `<project>/MemoValeOS/` с собственным репозиторием внутри репозитория проекта | личная установка (`--local`): хранилище исключено из git проекта, и свой `.git` — единственная история знания | `adopt.mjs` без `--project` здесь отказывает: корень неоднозначен. После установки корень берётся из записи `.mvos/install.json`, и валидатор, и `stale-check` спрашивают репозиторий проекта, а не хранилища |
+
+Какая раскладка у конкретной копии, после первой установки говорит запись `.mvos/install.json` (`projectRoot`, `mode`) — [[Docs/08-Distribution/08-2-Adoption]].
 
 Почему исходники команд лежат в `Knowledge-OS/Dist/`, а не прямо в `.claude/`? Слой ОС доставляется патчем путей манифеста (`os-patch.mjs`), а пути манифеста относительны хранилища: `.claude/` корня проекта лежит вне него. Поэтому канон живёт внутри хранилища, а [[Knowledge-OS/Tools/adopt.mjs]] копирует его в корень проекта. Правило `deployed-command-drift` не даёт копиям разойтись. Подробно — в [[Docs/08-Distribution/08-2-Adoption]].
 
@@ -127,7 +133,7 @@ flowchart TB
 1. Claude Code открывает `<project>/CLAUDE.md`. Это блок между маркерами `<!-- MemoValeOS:redirect:begin -->` и `<!-- MemoValeOS:redirect:end -->`: «Read `MemoValeOS/CLAUDE.md` first…».
 2. `MemoValeOS/CLAUDE.md` задаёт порядок работы и отсылает к [[Knowledge-OS/Protocols/Context-Selection-Protocol]] и [[Knowledge-OS/README]].
 3. Slash-команды `/mv-*` доступны, потому что [[Knowledge-OS/Tools/adopt.mjs]] скопировал их из `Knowledge-OS/Dist/commands/` в `<project>/.claude/commands/`.
-4. Каждый `Read`, `Grep` и `Glob` проходит через хук `<project>/.claude/hooks/budget-audit.mjs` и записывается в `<project>/.claude/budget-audit.jsonl`.
+4. Каждый `Read`, `Grep` и `Glob` проходит через хук `<project>/.claude/hooks/budget-audit.cjs` и записывается в `<project>/.claude/budget-audit.jsonl`.
 
 ## Подводные камни
 

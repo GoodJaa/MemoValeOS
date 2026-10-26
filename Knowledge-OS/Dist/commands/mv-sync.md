@@ -18,7 +18,7 @@ Find the previous delivery: the newest `os-vN` tag in this project (`git tag -l 
 **Step 1 — build the patch, in this project.**
 
 ```
-node "<vault dir>/Knowledge-OS/Tools/os-patch.mjs" --since os-vN --out <path outside both repositories>
+node "<vault dir>/Knowledge-OS/Tools/mv.cjs" os-patch --since os-vN --out <path outside both repositories>
 ```
 
 Read the path list it prints. Every path must be OS layer: if a project note, a plan or source code appears, stop — the manifest is wrong, and the patch must not leave this machine.
@@ -39,19 +39,19 @@ A conflict means upstream changed an OS-layer file outside a delivery. That is a
 - `.obsidian/app.json`, `.obsidian/templates.json` — take this project's.
 - `Backlog.md` — the OS's open backlog; take this project's. `Backlog-Archive.md` stays here: it is this project's record of how entries were closed.
 
+Never carried, not even by hand: `mvos.config.json` (this project's language and the language of its notes — upstream keeps its own, or none) and everything under `.mvos/` (`install.json`, this installation's record; `os-base.json`, the base of its next upgrade).
+
 Then look at upstream's template `Project-OS`. It belongs to upstream and never travels, but `Project-OS/06-AI/AI.md` does, and it names sections of `Current-Context`, `AI-Context-Index` and Development that the template must still have. If the delivered `AI.md` names a section the template lacks, add it to the template, empty. If the validator now refuses something in the template, fix the template there.
 
 **Step 4 — verify, from the upstream root, by running.**
 
 ```
-npm install                                     # once, if node_modules is missing
-node "Knowledge-OS/Tools/validate-vault.mjs"
-npm test
-node "Knowledge-OS/Tools/graph-report.mjs"
+npm install                                     # once: the tests' dev dependency (acorn)
+node "Knowledge-OS/Tools/mv.cjs" os-check --skip docs-with-code
 git grep -nE "^(<{7,}|>{7,})( |$)"
 ```
 
-Running these is the whole point of the step. The upstream has a different root and a different `Project-OS`, so a check that passes here can fail there. Reading the files instead of running them does not count.
+`os-check` is the OS layer's definition of done in one command: the validator, every test, `node --check` on every script, the graph summary. `docs-with-code` is skipped because the delivery is still uncommitted; it was already checked in this project, where the change was made. Running these is the whole point of the step. The upstream has a different root and a different `Project-OS`, so a check that passes here can fail there. Reading the files instead of running them does not count.
 
 Then check parity: every OS-layer path must hold the same content in upstream as at this project's `HEAD`, apart from the permanent divergences below. Compare the blobs (`git ls-tree -r` on both sides, filtered by the manifest), not the file listing. Any other difference is drift the delivery introduced or failed to remove — find out which before committing.
 

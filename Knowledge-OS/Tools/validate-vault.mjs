@@ -14,10 +14,13 @@
  */
 
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
-import { join, relative, sep, dirname } from "node:path";
+import { join, relative, sep, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { load as loadYaml, YAMLException } from "js-yaml";
+/* js-yaml is vendored (Tools/vendor/, 4.3.2, MIT) rather than installed: a
+ * host whose npm is old or offline could not run `npm install`, and the
+ * validator is the first thing an installation runs. */
+import { load as loadYaml, YAMLException } from "./vendor/js-yaml.mjs";
 
 /* The vault root is where this file structurally lives — two levels up from
  * Knowledge-OS/Tools/ — not process.cwd(). A vault is sometimes a subfolder of
@@ -27,12 +30,35 @@ import { load as loadYaml, YAMLException } from "js-yaml";
 const VAULT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const JSON_OUT = process.argv.includes("--json");
 
-/* .claude/commands/ can sit beside Knowledge-OS/Project-OS inside the vault
- * (a standalone MemoValeOS clone, vault root == repo root) or one level above
- * VAULT (MemoValeOS embedded as a subfolder of a larger project, as in this
- * repo). Prefer whichever actually exists; if neither does, there is nothing
- * to check — not every deployment has slash commands at all. */
+/* The install record, `.mvos/install.json`, written by adopt.mjs on every
+ * apply: the project root the OS was installed into, and the mode. When it
+ * exists, the project root is taken from it rather than guessed — the guesses
+ * below were wrong in exactly the layout the personal install recommends (a
+ * vault with its own .git inside the project): `.claude/` was looked for in
+ * the vault, and `source` commits were asked of the vault's repository, which
+ * never held the project's code. */
+function readInstallRecord() {
+  try {
+    const r = JSON.parse(readFileSync(join(VAULT, ".mvos", "install.json"), "utf8"));
+    return r && typeof r === "object" && typeof r.projectRoot === "string" ? r : null;
+  } catch {
+    return null;
+  }
+}
+const INSTALL = readInstallRecord();
+const PROJECT_ROOT = INSTALL ? resolve(VAULT, INSTALL.projectRoot) : null;
+/* A personal install brings its commands and hook as the plugin `mv`; there
+ * is no deployed copy in `.claude/` to compare against Dist. */
+const PLUGIN_INSTALL = INSTALL?.mode === "local";
+
+/* Without a record, .claude/commands/ can sit beside Knowledge-OS/Project-OS
+ * inside the vault (a standalone MemoValeOS clone, vault root == repo root) or
+ * one level above VAULT (MemoValeOS embedded as a subfolder of a larger
+ * project, as in this repo). Prefer whichever actually exists; if neither
+ * does, there is nothing to check — not every deployment has slash commands
+ * at all. */
 function findClaudeDir() {
+  if (PROJECT_ROOT) return existsSync(join(PROJECT_ROOT, ".claude")) ? join(PROJECT_ROOT, ".claude") : null;
   for (const candidate of [join(VAULT, ".claude"), join(VAULT, "..", ".claude")]) {
     if (existsSync(candidate)) return candidate;
   }
@@ -48,6 +74,14 @@ const KNOWLEDGE_ROOTS = ["Knowledge-OS", "Project-OS"];
  * this vault, and judging them against this note graph would report a foreign
  * file's working links as broken. */
 const LINK_EXEMPT = ["Archive", "Inbox"];
+
+/* Markdown links (`[text](path)`) are checked in the same files, with Plans/
+ * exempt as well. A plan is a working document written in an editor, and its
+ * links are an editor's: `[Backlog.md](MemoValeOS/Backlog.md)` resolves from
+ * the repository root in the IDE that wrote it and from nowhere in the vault.
+ * Rewriting dated plans to satisfy a rule added after them would change the
+ * record without making anything more true. */
+const MD_LINK_EXEMPT = [...LINK_EXEMPT, "Plans"];
 
 /* Entity templates are scaffolds, not notes: their fields hold placeholders
  * rather than values by definition, so the note schema (required fields,
@@ -488,6 +522,40 @@ function collectLinks(text) {
   return links;
 }
 
+/* Markdown links and images, `[text](dest)` and `![alt](dest)`, with an
+ * optional `"title"` and the `<…>` form for destinations with spaces. Only the
+ * destination is returned. Wikilinks never match: `[[x]]` is not followed by
+ * `(`. Callers strip code first, as for wikilinks — a link shown as an example
+ * is not a link. */
+function collectMarkdownLinks(text) {
+  const out = [];
+  const re = /!?\[[^\]\n]*\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\s*\)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) out.push(m[1]);
+  return out;
+}
+
+/* Where a Markdown link destination points, as an absolute path — or
+ * `undefined` when it does not name a file at all: a URL with a scheme
+ * (`https:`, `mailto:`, `obsidian:`), or an anchor into the same page. A
+ * destination is relative to the file that holds it, as Markdown defines it;
+ * one starting with `/` is taken from the vault root, which is what Obsidian
+ * means by it. Percent-encoding is undone, so `Other%20Page.md` finds the
+ * file a reader would open. */
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+function markdownLinkTarget(rel, dest) {
+  let d = dest.startsWith("<") ? dest.slice(1, -1) : dest;
+  if (URL_SCHEME.test(d)) return undefined;
+  d = d.split("#")[0].split("?")[0];
+  if (!d) return undefined;
+  try {
+    d = decodeURI(d);
+  } catch {
+    /* a stray `%` is part of the name, not an escape */
+  }
+  return d.startsWith("/") ? resolve(VAULT, "." + d) : resolve(VAULT, dirname(rel), d);
+}
+
 /* Inline relationship fields, per Schema/Relationship Types: a line that begins
  * `name:: `. A misspelled name is the quiet failure this catches — the link
  * still resolves, the note still renders, and the graph still draws the edge,
@@ -713,6 +781,19 @@ for (const [rel, note] of notes) {
       }
     }
   }
+
+  /* The wikilink check above never saw `[text](path)`: a page could point at a
+   * renamed file in plain Markdown and stay green. Nothing in the OS layer
+   * uses that form today, which is exactly when a rule is cheap to add — the
+   * first such link written is checked from the start. */
+  if (isVaultOwned(rel) && !inAnyFolder(rel, MD_LINK_EXEMPT)) {
+    for (const dest of collectMarkdownLinks(stripCodeAndInline(note.text))) {
+      const target = markdownLinkTarget(rel, dest);
+      if (target !== undefined && !existsSync(target)) {
+        err(rel, "broken-md-link", `link \`(${dest})\` resolves to nothing`);
+      }
+    }
+  }
 }
 
 /* Uncertainty ledger: an open blocking row must not point at active knowledge.
@@ -816,8 +897,8 @@ for (const [rel, note] of notes) {
 
 /* D18: every file in the OS layer must be named by `os-manifest`.
  *
- * The manifest is what delivery is defined against: `upgrade.mjs` refuses a
- * diff that reaches outside it, and a reverse-port copies what it lists. A
+ * The manifest is what delivery is defined against: `os-patch.mjs` carries
+ * and `upgrade.mjs` updates only what it lists. A
  * file in the OS layer that no line covers is therefore invisible to delivery
  * — it never travels, and the two copies drift apart with nothing to say so.
  *
@@ -861,6 +942,8 @@ function manifestToRegExp(pattern) {
   return new RegExp("^" + out + "$");
 }
 
+let manifestInclude = null;
+
 if (existsSync(MANIFEST_PATH)) {
   const lines = readFileSync(MANIFEST_PATH, "utf8")
     .split(/\r?\n/)
@@ -868,6 +951,7 @@ if (existsSync(MANIFEST_PATH)) {
     .filter((l) => l && !l.startsWith("#"));
   const include = lines.filter((l) => !l.startsWith("!")).map(manifestToRegExp);
   const exclude = lines.filter((l) => l.startsWith("!")).map((l) => manifestToRegExp(l.slice(1)));
+  manifestInclude = include;
 
   for (const rel of allFiles) {
     if (!OS_LAYER_PREFIXES.some((p) => rel.startsWith(p))) continue;
@@ -879,6 +963,110 @@ if (existsSync(MANIFEST_PATH)) {
       "os-layer-outside-manifest",
       "file is in the OS layer but no `os-manifest` line covers it, so delivery will not carry it"
     );
+  }
+}
+
+/* Docs/ travels with the OS layer, so a page may point only at what travels
+ * too: a path the manifest covers, another page of Docs/, or a file every copy
+ * keeps for itself (README.md, CLAUDE.md…). A link into this project's own
+ * Tasks or Findings resolves here and nowhere else.
+ *
+ * The convention is as old as Docs/ (os-manifest says so beside its `Docs/**`
+ * line), but nothing held it locally: a page that broke it passed here and
+ * failed only in upstream, at the `/mv-sync` step, which is the most expensive
+ * place to find it. `!` exclusions do not make a target illegal — the
+ * permanent divergences they mark (Templates/Task.md) exist in every copy,
+ * just in different shapes. Broken links are left to broken-link and
+ * broken-md-link; this rule judges only links that resolve.
+ *
+ * PER_COPY_FILES in Tools/manifest.mjs is the same list; keep the two in step.
+ * It is repeated rather than imported because the validator is tested by
+ * copying this one file into each fixture. */
+const PER_COPY_FILES = ["CLAUDE.md", "README.md", ".os-version", ".obsidian/app.json", ".obsidian/templates.json", "Backlog.md"];
+
+/* The vault-relative POSIX paths a wikilink addresses, by the same resolution
+ * linkResolves() uses: an exact or suffix path, or every note with the basename. */
+function wikilinkTargetPaths(target) {
+  const norm = target.split("\\").join("/").replace(/\.md$/, "");
+  if (norm.includes("/")) return pathLinkCandidates(norm, ownedFilePaths);
+  const out = new Set();
+  if (pathSet.has(norm + ".md")) out.add(norm + ".md");
+  if (pathSet.has(norm)) out.add(norm);
+  for (const p of byBasename.get(norm) || []) out.add(p.split(sep).join("/"));
+  return [...out];
+}
+
+if (manifestInclude) {
+  const travels = (posix) =>
+    posix.startsWith("Docs/") || PER_COPY_FILES.includes(posix) || manifestInclude.some((r) => r.test(posix));
+  for (const [rel, note] of notes) {
+    if (rel.split(sep)[0] !== "Docs") continue;
+    const text = stripCodeAndInline(note.text);
+    const targets = new Map(); // posix target → how the page wrote it
+    for (const t of collectLinks(text)) for (const p of wikilinkTargetPaths(t)) targets.set(p, `[[${t}]]`);
+    for (const dest of collectMarkdownLinks(text)) {
+      const abs = markdownLinkTarget(rel, dest);
+      if (abs === undefined || !existsSync(abs)) continue;
+      targets.set(relative(VAULT, abs).split(sep).join("/"), `(${dest})`);
+    }
+    for (const [posix, written] of targets) {
+      if (posix.startsWith("../")) {
+        err(rel, "docs-link-outside-os-layer", `link \`${written}\` leaves the vault; no other copy of the OS has \`${posix}\``);
+      } else if (!travels(posix)) {
+        err(rel, "docs-link-outside-os-layer", `link \`${written}\` points at \`${posix}\`, which the OS layer does not carry; upstream has no such file`);
+      }
+    }
+  }
+}
+
+/* Every tool, command, hook and distributable file of the OS layer is named
+ * on at least one page of Docs/. The owner's definition of done for any change
+ * to the OS (Docs/10-Extending.md) starts with "documentation is current", and
+ * the cheapest half of that a machine can see is whether a thing is mentioned
+ * at all: a tool nobody describes is a tool the next reader rediscovers from
+ * its source.
+ *
+ * A mention is the file name — `adopt.mjs`, `budget-audit.cjs` — or, for a
+ * command, its name without `.md`, which is how Docs write it (`/mv-check`).
+ * Code spans count: Docs name files in backticks.
+ *
+ * Only a vault that carries the OS's own documentation is held to it, and
+ * `Docs/00-Index.md` is what marks one. A fixture with a stray Docs/ page, or
+ * a project that keeps notes in a Docs folder of its own, has no index and is
+ * not asked to describe the validator copied into it. */
+const DOCS_INDEX = join(VAULT, "Docs", "00-Index.md");
+
+if (existsSync(DOCS_INDEX)) {
+  const docsText = [...notes]
+    .filter(([rel]) => rel.split(sep)[0] === "Docs")
+    .map(([, note]) => note.text)
+    .join("\n");
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentioned = (word) => new RegExp(`(^|[^A-Za-z0-9_.-])${escape(word)}(?![A-Za-z0-9_-])`, "m").test(docsText);
+  const filesIn = (...parts) => {
+    try {
+      return readdirSync(join(VAULT, ...parts), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+    } catch {
+      return [];
+    }
+  };
+
+  const items = []; // [vault-relative path, the word Docs must contain]
+  for (const n of filesIn("Knowledge-OS", "Tools")) {
+    if (/\.(mjs|cjs)$/.test(n) && !n.endsWith(".test.mjs")) items.push([join("Knowledge-OS", "Tools", n), n]);
+  }
+  for (const n of filesIn("Knowledge-OS", "Dist", "commands")) {
+    if (/^mv-.+\.md$/.test(n)) items.push([join("Knowledge-OS", "Dist", "commands", n), n.replace(/\.md$/, "")]);
+  }
+  for (const n of filesIn("Knowledge-OS", "Dist", "hooks")) {
+    if (!n.includes(".test.")) items.push([join("Knowledge-OS", "Dist", "hooks", n), n]);
+  }
+  for (const n of filesIn("Knowledge-OS", "Dist")) items.push([join("Knowledge-OS", "Dist", n), n]);
+
+  for (const [rel, word] of items) {
+    if (!mentioned(word)) {
+      err(rel, "undocumented-os-file", `no page under Docs/ mentions \`${word}\`; describe it where its neighbours are described`);
+    }
   }
 }
 
@@ -901,6 +1089,41 @@ for (const line of mvignoreLines) {
     );
   } else if (!mvignoreUsed.has(line)) {
     warn(".mvignore", "mvignore-line-unused", `line \`${line}\` matched nothing; it may have outlived its reason`);
+  }
+}
+
+/* mvos.config.json: the settings one copy of the OS keeps for its project —
+ * today the project's language and the language of its notes, which the
+ * Communication Rules read. Before it, the rules said "Russian" for every
+ * project the OS was installed into; now the OS layer names no language and
+ * the copy names its own. A key nobody reads, or a value no rule recognises,
+ * is the quiet failure: the assistant falls back to guessing and nothing says
+ * so. The message lists what is valid, because the reader who sees it is
+ * about to type the fix. */
+const CONFIG_PATH = join(VAULT, "mvos.config.json");
+const CONFIG_KEYS = {
+  format: { ok: (v) => v === 1, expected: "1" },
+  language: { ok: (v) => typeof v === "string" && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v), expected: "a language tag such as ru, en, de or pt-BR" },
+  notes: { ok: (v) => ["language", "english", "split"].includes(v), expected: "language, english or split" },
+};
+
+if (existsSync(CONFIG_PATH)) {
+  let cfg;
+  try {
+    cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  } catch (e) {
+    err("mvos.config.json", "invalid-config", `not valid JSON: ${e.message.split("\n")[0]}`);
+  }
+  if (cfg !== undefined) {
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) {
+      err("mvos.config.json", "invalid-config", "must be a JSON object");
+    } else {
+      for (const [key, v] of Object.entries(cfg)) {
+        const spec = CONFIG_KEYS[key];
+        if (!spec) err("mvos.config.json", "invalid-config", `unknown key \`${key}\`; known: ${Object.keys(CONFIG_KEYS).join(", ")}`);
+        else if (!spec.ok(v)) err("mvos.config.json", "invalid-config", `\`${key}\` is ${JSON.stringify(v)}; expected ${spec.expected}`);
+      }
+    }
   }
 }
 
@@ -928,9 +1151,13 @@ for (const line of mvignoreLines) {
  * `.claude/` at all: the upstream distribution repository is exactly that, and
  * making absence an error would turn its validator red on the day this ships,
  * which is how a gate teaches its reader to stop looking. */
+/* The hook's name, under any of the extensions it has had: `budget-audit.mjs`
+ * until 2026-10-25, `budget-audit.cjs` since. Dist holds only the current one,
+ * so a deployed `.mjs` left over from before has no source here and is reported
+ * as undeployed-command-source — which is exactly what it is. */
 const DEPLOYABLE = [
   ["commands", (n) => /^mv-[^/]+\.md$/.test(n)],
-  ["hooks", (n) => n === "budget-audit.mjs"],
+  ["hooks", (n) => /^budget-audit\.(cjs|mjs)$/.test(n)],
 ];
 
 /* The distribution copy — the vault is its own repository root and there is
@@ -944,8 +1171,8 @@ let distributionCopy = false;
 
 if (existsSync(join(VAULT, DIST_PATH))) {
   const deployRoot = findClaudeDir();
-  distributionCopy = !deployRoot && existsSync(join(VAULT, ".git"));
-  for (const [kind, matches] of distributionCopy ? [] : DEPLOYABLE) {
+  distributionCopy = !INSTALL && !deployRoot && existsSync(join(VAULT, ".git"));
+  for (const [kind, matches] of distributionCopy || PLUGIN_INSTALL ? [] : DEPLOYABLE) {
     const sourceDir = join(VAULT, DIST_PATH, kind);
     let names;
     try {
@@ -1031,7 +1258,10 @@ function findRepoRoot(start) {
   }
 }
 
-const REPO_ROOT = findRepoRoot(VAULT);
+/* With an install record the search starts at the project root it names, so
+ * a vault with its own .git still asks the project's repository about the
+ * project's files (Backlog, 2026-09-17). */
+const REPO_ROOT = findRepoRoot(PROJECT_ROOT ?? VAULT);
 
 function commitsTouching(commit, path) {
   const opts = { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] };
@@ -1227,7 +1457,7 @@ for (const rel of baseFiles) {
 // ---------------------------------------------------------------- report
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ errors, warnings, notes: notes.size, distributionCopy }, null, 2));
+  console.log(JSON.stringify({ errors, warnings, notes: notes.size, distributionCopy, installMode: INSTALL?.mode ?? null }, null, 2));
 } else {
   const group = (rows) => {
     const byFile = new Map();
@@ -1245,6 +1475,9 @@ if (JSON_OUT) {
   console.log(`Scanned ${notes.size} markdown files, ${governedCount} of them governed notes under ${KNOWLEDGE_ROOTS.join(", ")}${mvignoreExcluded ? ` (${mvignoreExcluded} path(s) excluded by .mvignore)` : ""}.`);
   if (distributionCopy) {
     console.log("Distribution copy: the vault is its own repository and has no .claude/, so Knowledge-OS/Dist/ is not checked for deployment.");
+  }
+  if (PLUGIN_INSTALL) {
+    console.log("Personal install: commands and hook come from the plugin `mv`, so Knowledge-OS/Dist/ is not compared with .claude/.");
   }
   console.log("");
   if (errors.length) {

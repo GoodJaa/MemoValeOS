@@ -32,7 +32,7 @@ flowchart TD
   end
   ONE --> W
   subgraph WORK["Работа"]
-    W["Ветка task/T…<br/>чтения внутри бюджета"] -->|"каждый Read/Grep/Glob"| HK["budget-audit.mjs<br/>→ budget-audit.jsonl"]
+    W["Ветка task/T…<br/>чтения внутри бюджета"] -->|"каждый Read/Grep/Glob"| HK["budget-audit.cjs<br/>→ budget-audit.jsonl"]
     W -->|"наблюдение"| NT["/mv-note → Finding"]
     W --> MG["squash-merge в master<br/>→ status: done"]
   end
@@ -73,7 +73,7 @@ flowchart TD
 | Момент | Кто | Что происходит |
 |---|---|---|
 | Начало задачи | ассистент по протоколу §2 (вызывается из `/mv-resume`) | файл создаётся |
-| Каждый `Read`/`Grep`/`Glob` | хук `PreToolUse` [[Knowledge-OS/Dist/hooks/budget-audit.mjs]] | строка в `.claude/budget-audit.jsonl`: путь, `declared`, `task`, `withinBudget`. Хук ничего не блокирует: его задача — измерять, как часто дисциплина реально соблюдается |
+| Каждый `Read`/`Grep`/`Glob` | хук `PreToolUse` [[Knowledge-OS/Dist/hooks/budget-audit.cjs]] | строка в `.claude/budget-audit.jsonl`: путь, `declared`, `task`, `withinBudget`. Хук ничего не блокирует: его задача — измерять, как часто дисциплина реально соблюдается |
 | Бюджет законно изменился | ассистент | файл переписывается, а не остаётся старым |
 | Закрытие (часть 3, шаг 5) | `/mv-close`, `rm -f` (разрешено в `allowed-tools` как `Bash(rm -f *budget.json)`) | файл удаляется |
 | Между сессиями | — | файла нет; чтения до нового объявления записываются как `declared: false` («undeclared») |
@@ -166,6 +166,6 @@ node "Knowledge-OS/Tools/context-metrics.mjs" --write --session <id> --label tas
 
 - **Изменение ритуала** — сначала [[Project-OS/06-AI/AI]], затем [[Knowledge-OS/Dist/commands/mv-close]] (команда ссылается на нумерацию частей и шагов), затем развёртывание копии в `.claude/commands/` через [[Knowledge-OS/Tools/adopt.mjs]], иначе `deployed-command-drift` ([[Docs/08-Distribution/08-2-Adoption]]). Если шагу нужен новый инструмент, добавьте его в `allowed-tools`: без разрешения шаг молча не выполнится, как чуть не случилось с `rm -f`.
 - **Изменение входа** — [[Knowledge-OS/Dist/commands/mv-resume]]; поиск задачи должен совпадать с `Development.md` и частью 3 ритуала.
-- **Изменение формы бюджета** — [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2, [[Knowledge-OS/Dist/hooks/budget-audit.mjs]] и его тест, `analyseBudget` в [[Knowledge-OS/Tools/context-metrics.mjs]] ([[Docs/06-Tooling/06-4-Budget-Audit-Hook]]).
+- **Изменение формы бюджета** — [[Knowledge-OS/Protocols/Context-Selection-Protocol]] §2, [[Knowledge-OS/Dist/hooks/budget-audit.cjs]] и его тест, `analyseBudget` в [[Knowledge-OS/Tools/context-metrics.mjs]] ([[Docs/06-Tooling/06-4-Budget-Audit-Hook]]).
 - **Новый раздел `Current-Context.md`** — шаблон заметки в апстриме и правила части 3 о том, когда раздел переписывается.
 - **Проверка** — `node Knowledge-OS/Tools/validate-vault.mjs`, `node Knowledge-OS/Tools/adopt.mjs --verify`, затем пробный прогон `/mv-close` в тихой сессии: часть 3 должна повторить поиск и ничего не изменить.

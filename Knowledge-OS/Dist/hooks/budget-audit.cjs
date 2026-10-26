@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/* eslint-disable -- deployed into a host project's .claude/hooks/, where the
+ * host's linter has no say over it: flat-config ESLint lints dot-directories,
+ * and its rules (Node globals, `catch (e)` the ES2017 syntax here requires)
+ * would fail the host's lint, and its CI, on a file it does not own. */
 /**
  * B6 — make the retrieval budget measurable.
  *
@@ -20,25 +24,34 @@
  * Failure policy: never interfere. Every path exits 0, including a corrupt
  * budget file or an unwritable log. A measuring instrument that can break the
  * work it measures would be abandoned, and rightly.
+ *
+ * CommonJS and ECMAScript 2017, on purpose. The first real installation ran it
+ * under the host's Node 12, where the ESM version with `?.` never parsed: it
+ * exited 1 before its first line, the "exits 0 on every path" above was false,
+ * and nothing was logged for weeks without anyone seeing an error — a non-zero
+ * exit from a PreToolUse hook does not block, so it is not shown either. This
+ * file parses on Node 8 and later. It does not go through the launcher
+ * (Tools/mv.cjs): it runs on every read, and a second process there would
+ * cost more than the measurement is worth. The syntax is pinned by a test
+ * (budget-audit.test.mjs parses it as ECMAScript 2017).
  */
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+"use strict";
 
-/* fileURLToPath, not `new URL(...).pathname`: the latter leaves a file URL's
- * percent-encoding in place, so any directory with a space in it arrives as
- * `%20` and the resolved root is a path that does not exist. This hook exits 0
- * on every path by design, so it would not have complained — it would simply
- * have recorded the wrong thing. */
-const FALLBACK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const fs = require("fs");
+const path = require("path");
+
+/* The project root when Claude Code does not say: the hook lives in
+ * <root>/.claude/hooks/. */
+const FALLBACK_ROOT = path.resolve(__dirname, "..", "..");
 
 function main() {
   let payload;
   try {
     payload = JSON.parse(fs.readFileSync(0, "utf8"));
-  } catch {
+  } catch (e) {
     return; // No stdin, or not JSON. Not our business to complain.
   }
+  if (!payload || typeof payload !== "object") return;
 
   const root = process.env.CLAUDE_PROJECT_DIR || payload.cwd || FALLBACK_ROOT;
   const budgetPath = path.join(root, ".claude", "budget.json");
@@ -54,58 +67,62 @@ function main() {
   let budget;
   try {
     budget = JSON.parse(fs.readFileSync(budgetPath, "utf8"));
-  } catch {
+  } catch (e) {
     budget = null;
   }
+  if (budget !== null && typeof budget !== "object") budget = null;
 
   const target = firstPath(payload.tool_name, payload.tool_input);
   if (target === null) return; // A search with no path argument: no target to score.
 
-  const entryPoints = Array.isArray(budget?.entryPoints) ? budget.entryPoints : [];
+  const entryPoints = budget && Array.isArray(budget.entryPoints) ? budget.entryPoints : [];
   const rel = toRelative(target, root);
 
   const record = {
     at: new Date().toISOString(),
-    session: payload.session_id ?? null,
+    session: orNull(payload.session_id),
     /* Present only on a subagent's calls — the main session has neither field.
      * Context Selection Protocol says delegating the search does not delegate
      * the budget; recording this is what makes that claim checkable instead of
      * aspirational. */
-    agent: payload.agent_type ?? null,
-    agentId: payload.agent_id ?? null,
-    tool: payload.tool_name ?? null,
+    agent: orNull(payload.agent_type),
+    agentId: orNull(payload.agent_id),
+    tool: orNull(payload.tool_name),
     path: rel,
     declared: budget !== null,
-    task: budget?.task ?? null,
+    task: budget ? orNull(budget.task) : null,
     withinBudget: budget === null ? null : entryPoints.some((e) => matches(rel, e)),
   };
 
   try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     fs.appendFileSync(logPath, JSON.stringify(record) + "\n");
-  } catch {
+  } catch (e) {
     // Logging failed. Still not our business to interrupt the session.
   }
+}
+
+/* `x ?? null`, in the syntax this file is allowed. */
+function orNull(x) {
+  return x === undefined || x === null ? null : x;
 }
 
 /** The one path a read addresses, or null when the call names none. */
 function firstPath(tool, input) {
   if (!input || typeof input !== "object") return null;
-  if (tool === "Read") return input.file_path ?? null;
+  if (tool === "Read") return orNull(input.file_path);
   // Grep and Glob may omit `path` entirely — an unscoped search over the whole
   // tree. That is a different failure from reading the wrong file, and
   // context-metrics.mjs already counts it as `unscopedSearches`; scoring it
   // here as "outside budget" would double-count the same behaviour.
-  if (tool === "Grep" || tool === "Glob") return input.path ?? null;
+  if (tool === "Grep" || tool === "Glob") return orNull(input.path);
   return null;
 }
 
 function toRelative(p, root) {
   const norm = String(p).split("\\").join("/");
   const rootNorm = String(root).split("\\").join("/").replace(/\/+$/, "");
-  return norm.toLowerCase().startsWith(rootNorm.toLowerCase() + "/")
-    ? norm.slice(rootNorm.length + 1)
-    : norm;
+  return norm.toLowerCase().startsWith(rootNorm.toLowerCase() + "/") ? norm.slice(rootNorm.length + 1) : norm;
 }
 
 /**
@@ -119,5 +136,9 @@ function matches(rel, entry) {
   return a === b || a.startsWith(b + "/");
 }
 
-main();
+try {
+  main();
+} catch (e) {
+  /* Whatever went wrong, the read it was observing goes ahead. */
+}
 process.exit(0);
